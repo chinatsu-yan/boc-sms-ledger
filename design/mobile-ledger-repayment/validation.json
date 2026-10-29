@@ -1,0 +1,41 @@
+{
+  "rendered_pixels_per_screen": [
+    824,
+    1864
+  ],
+  "metrics": {
+    "overview": {
+      "contentBottom": 824.984375,
+      "navTop": 845,
+      "horizontalOverflow": false,
+      "overlap": false
+    },
+    "credit": {
+      "contentBottom": 837.59375,
+      "navTop": 845,
+      "horizontalOverflow": false,
+      "overlap": false
+    },
+    "transactions": {
+      "contentBottom": 828.390625,
+      "navTop": 845,
+      "horizontalOverflow": false,
+      "overlap": false
+    },
+    "settings": {
+      "contentBottom": 831.796875,
+      "navTop": 845,
+      "horizontalOverflow": false,
+      "overlap": false
+    }
+  },
+  "browser_errors": [],
+  "checks": [
+    "next-month date",
+    "same-month conflict visible, blocks apply, no overlap",
+    "nonleap February clamp",
+    "leap February clamp",
+    "account toggle",
+    "430px viewport no page overflow"
+  ]
+}
