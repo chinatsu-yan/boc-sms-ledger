@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "fixture_kind": "synthetic_complete_sms",
+  "status": "specification_only",
+  "description": "依据提供的九条完整短信结构构造。卡尾号、商户、日期、金额、余额和汇率均为替代测试数据，不含原始个人交易记录。",
+  "source_metadata": {
+    "sender_address": null,
+    "received_at": null,
+    "note": "原始输入仅含正文，发送方号码、短信接收时间和设备短信 ID 均未提供；银行落款不是发送方身份验证。"
+  },
+  "case_count": 9,
+  "template_count": 7,
+  "cases": [
+    {
+      "id": "debit_online_payment",
+      "text": "您的借记卡账户1111，于06月12日网上支付支取人民币12.00元,交易后余额2040.40【中国银行】",
+      "expected_event": {
+        "type": "debit_payment",
+        "account": {
+          "bank": "BOC",
+          "kind": "debit",
+          "card_tail": "1111"
+        },
+        "occurred_on": {
+          "year": null,
+          "month": 6,
+          "day": 12,
+          "precision": "month_day",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "CNY",
+          "amount": "12.00",
+          "raw_currency": "人民币"
+        },
+        "balance_after": {
+          "currency": "CNY",
+          "amount": "2040.40",
+          "raw_currency": "人民币"
+        },
+        "channel": "网上支付",
+        "merchant": null
+      },
+      "accounting_rule": "记录资金支出；支付用途未分类，正文没有商户。"
+    },
+    {
+      "id": "debit_interbank_incoming",
+      "text": "您的借记卡账户1111，于06月12日收入(网银跨行)人民币2000.00元,交易后余额2052.40【中国银行】",
+      "expected_event": {
+        "type": "debit_transfer_in",
+        "account": {
+          "bank": "BOC",
+          "kind": "debit",
+          "card_tail": "1111"
+        },
+        "occurred_on": {
+          "year": null,
+          "month": 6,
+          "day": 12,
+          "precision": "month_day",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "CNY",
+          "amount": "2000.00",
+          "raw_currency": "人民币"
+        },
+        "balance_after": {
+          "currency": "CNY",
+          "amount": "2052.40",
+          "raw_currency": "人民币"
+        },
+        "channel": "网银跨行",
+        "counterparty": null
+      },
+      "accounting_rule": "资金转入明确；是否工资、他人付款或本人调拨未知，经济收入分类待确认。"
+    },
+    {
+      "id": "debit_mobile_interbank_outgoing",
+      "text": "您的借记卡账户1111，于06月12日手机银行支取(跨行支付)人民币2.00元,交易后余额52.40【中国银行】",
+      "expected_event": {
+        "type": "debit_transfer_out",
+        "account": {
+          "bank": "BOC",
+          "kind": "debit",
+          "card_tail": "1111"
+        },
+        "occurred_on": {
+          "year": null,
+          "month": 6,
+          "day": 12,
+          "precision": "month_day",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "CNY",
+          "amount": "2.00",
+          "raw_currency": "人民币"
+        },
+        "balance_after": {
+          "currency": "CNY",
+          "amount": "52.40",
+          "raw_currency": "人民币"
+        },
+        "channel": "手机银行",
+        "operation_detail": "跨行支付",
+        "counterparty": null
+      },
+      "accounting_rule": "记录资金转出；是否本人账户调拨或其他用途未知，不直接计作消费。"
+    },
+    {
+      "id": "credit_usd_purchase",
+      "text": "您的信用卡2222于2026年06月11日，在CLOUD_DEMO消费USD0.75元。【中国银行】",
+      "expected_event": {
+        "type": "credit_purchase",
+        "account": {
+          "bank": "BOC",
+          "kind": "credit",
+          "card_tail": "2222"
+        },
+        "occurred_on": {
+          "year": 2026,
+          "month": 6,
+          "day": 11,
+          "precision": "date",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "USD",
+          "amount": "0.75",
+          "raw_currency": "USD"
+        },
+        "merchant": "CLOUD_DEMO",
+        "settlement_status": "unknown"
+      },
+      "accounting_rule": "记录原币消费；没有人民币等值、结算币种或最终入账状态。"
+    },
+    {
+      "id": "credit_sgd_reversal",
+      "text": "您的信用卡2222于2026年06月10日，在DB_DEMO撤销SGD2.50元。【中国银行】",
+      "expected_event": {
+        "type": "credit_reversal",
+        "account": {
+          "bank": "BOC",
+          "kind": "credit",
+          "card_tail": "2222"
+        },
+        "occurred_on": {
+          "year": 2026,
+          "month": 6,
+          "day": 10,
+          "precision": "date",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "SGD",
+          "amount": "2.50",
+          "raw_currency": "SGD"
+        },
+        "merchant": "DB_DEMO",
+        "related_event_id": null
+      },
+      "accounting_rule": "记录撤销事件；匹配在独立关联层完成，不因样例顺序自动绑定消费。"
+    },
+    {
+      "id": "credit_sgd_purchase",
+      "text": "您的信用卡2222于2026年06月10日，在DB_DEMO消费SGD2.50元。【中国银行】",
+      "expected_event": {
+        "type": "credit_purchase",
+        "account": {
+          "bank": "BOC",
+          "kind": "credit",
+          "card_tail": "2222"
+        },
+        "occurred_on": {
+          "year": 2026,
+          "month": 6,
+          "day": 10,
+          "precision": "date",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "SGD",
+          "amount": "2.50",
+          "raw_currency": "SGD"
+        },
+        "merchant": "DB_DEMO",
+        "settlement_status": "unknown"
+      },
+      "accounting_rule": "与同额撤销形成候选关系；确认后净额为零，原始事件均保留。"
+    },
+    {
+      "id": "credit_refund_without_merchant",
+      "text": "您的信用卡2222于2026年06月09日成功退货USD18.90元【中国银行】",
+      "expected_event": {
+        "type": "credit_refund",
+        "account": {
+          "bank": "BOC",
+          "kind": "credit",
+          "card_tail": "2222"
+        },
+        "occurred_on": {
+          "year": 2026,
+          "month": 6,
+          "day": 9,
+          "precision": "date",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "USD",
+          "amount": "18.90",
+          "raw_currency": "USD"
+        },
+        "merchant": null,
+        "related_event_id": null
+      },
+      "accounting_rule": "退款事件可直接记录并单列为退款；不当作普通收入，不要求存在原消费才保存，不猜商户或强制匹配。"
+    },
+    {
+      "id": "credit_fx_repayment",
+      "text": "您的信用卡2222于2026年06月09日购汇还款，购汇转出卡号1111，购汇转入USD100.00，购汇转出RMB680.00，汇率0.147059【中国银行】",
+      "expected_event": {
+        "type": "credit_fx_repayment",
+        "account": {
+          "bank": "BOC",
+          "kind": "credit",
+          "card_tail": "2222"
+        },
+        "occurred_on": {
+          "year": 2026,
+          "month": 6,
+          "day": 9,
+          "precision": "date",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "source_account": {
+          "bank": "BOC",
+          "kind": "debit",
+          "card_tail": "1111"
+        },
+        "source_money": {
+          "currency": "CNY",
+          "amount": "680.00",
+          "raw_currency": "RMB"
+        },
+        "repayment_money": {
+          "currency": "USD",
+          "amount": "100.00",
+          "raw_currency": "USD"
+        },
+        "reported_rate": "0.147059",
+        "rate_direction": {
+          "base_currency": "CNY",
+          "quote_currency": "USD",
+          "basis": "inferred_from_reported_amounts"
+        }
+      },
+      "accounting_rule": "一笔购汇还款包含借记卡人民币扣款和信用卡美元还款两个关联效果；不产生美元现金收入，不重复记作消费。金额优先于短信中已舍入的汇率。"
+    },
+    {
+      "id": "credit_jpy_grouped_purchase",
+      "text": "您的信用卡2222于2026年06月02日，在STORE_DEMO消费JPY12,345元。【中国银行】",
+      "expected_event": {
+        "type": "credit_purchase",
+        "account": {
+          "bank": "BOC",
+          "kind": "credit",
+          "card_tail": "2222"
+        },
+        "occurred_on": {
+          "year": 2026,
+          "month": 6,
+          "day": 2,
+          "precision": "date",
+          "source": "message_body",
+          "year_inferred": false
+        },
+        "money": {
+          "currency": "JPY",
+          "amount": "12345",
+          "raw_currency": "JPY"
+        },
+        "merchant": "STORE_DEMO",
+        "settlement_status": "unknown"
+      },
+      "accounting_rule": "仅在校验金额分组后移除千分位逗号；不得把整条短信按逗号拆分。"
+    }
+  ],
+  "boundary_cases": [
+    {
+      "id": "otp_not_transaction",
+      "text": "您正在使用尾号2222的信用卡支付，验证码为000000，请勿泄露。【中国银行】",
+      "expected_status": "ignored",
+      "reason": "合成验证码通知不生成交易事件。"
+    },
+    {
+      "id": "repayment_reminder_not_payment",
+      "text": "您的信用卡2222本期应还USD100.00元，请按时还款。【中国银行】",
+      "expected_status": "ignored",
+      "reason": "应还提醒不是已发生的还款。"
+    },
+    {
+      "id": "failed_purchase_not_success",
+      "text": "您的信用卡2222于2026年06月11日，在CLOUD_DEMO消费USD0.75元失败。【中国银行】",
+      "expected_status": "ignored",
+      "reason": "含失败状态的合成文本不得用成功消费模板截取后入账。"
+    },
+    {
+      "id": "invalid_thousands_grouping",
+      "text": "您的信用卡2222于2026年06月02日，在STORE_DEMO消费JPY12,34元。【中国银行】",
+      "expected_status": "needs_review",
+      "reason": "无效千分位分组，不宽松转换为 1234。"
+    },
+    {
+      "id": "invalid_decimal",
+      "text": "您的信用卡2222于2026年06月11日，在CLOUD_DEMO消费USD0.75.00元。【中国银行】",
+      "expected_status": "needs_review",
+      "reason": "金额格式异常，不截断为 0.75。"
+    },
+    {
+      "id": "invalid_calendar_date",
+      "text": "您的信用卡2222于2026年02月30日，在CLOUD_DEMO消费USD0.75元。【中国银行】",
+      "expected_status": "needs_review",
+      "reason": "不存在的日期不能自动归一化为另一日期。"
+    },
+    {
+      "id": "quoted_purchase_not_transaction",
+      "text": "提醒：如短信写有“在CLOUD_DEMO消费USD0.75元”，请核实。【中国银行】",
+      "expected_status": "ignored",
+      "reason": "包含交易关键词的提示文本不是完整交易模板。"
+    }
+  ],
+  "related_scenarios": [
+    {
+      "id": "confirmed_reversal",
+      "inputs": [
+        "credit_sgd_purchase",
+        "credit_sgd_reversal"
+      ],
+      "precondition": "同一原消费的关联已确认，累计撤销没有超出原金额。",
+      "expected": {
+        "currency": "SGD",
+        "net_observed_spending": "0.00",
+        "source_event_count": 2
+      }
+    },
+    {
+      "id": "ambiguous_reversal",
+      "precondition": "存在多笔同账户、同日、同币种、同商户、同额消费且无唯一原交易编号。",
+      "expected": {
+        "link_status": "needs_review",
+        "arbitrary_link_forbidden": true
+      }
+    },
+    {
+      "id": "fx_repayment_duplicate_bank_notice",
+      "inputs": [
+        "credit_fx_repayment"
+      ],
+      "precondition": "随后导入对应的借记卡扣款短信。",
+      "expected": {
+        "source_cash_movement_count": 1,
+        "credit_repayment_count": 1,
+        "source_evidence_count": 2,
+        "new_purchase_count": 0
+      },
+      "note": "两个账户效果可有多条证据；无可靠对应关系时保留待关联，不自动重复计入已确认汇总。"
+    },
+    {
+      "id": "debit_balance_arithmetic_only",
+      "ordered_inputs": [
+        "debit_mobile_interbank_outgoing",
+        "debit_interbank_incoming",
+        "debit_online_payment"
+      ],
+      "initial_balance": {
+        "currency": "CNY",
+        "amount": "54.40",
+        "raw_currency": "CNY"
+      },
+      "expected_final_balance": {
+        "currency": "CNY",
+        "amount": "2040.40",
+        "raw_currency": "CNY"
+      },
+      "note": "仅检查合成金额连续性；不得据此生成缺失交易时间、补造短信或重排真实历史。"
+    },
+    {
+      "id": "year_missing",
+      "inputs": [
+        "debit_online_payment"
+      ],
+      "expected": {
+        "year": null,
+        "current_clock_must_not_supply_year": true
+      }
+    },
+    {
+      "id": "same_sms_rescan",
+      "precondition": "同一设备短信来源记录再次扫描或重解析。",
+      "expected": {
+        "additional_transaction_count": 0
+      },
+      "note": "来源 ID 与设备/短信库范围绑定；独立收到的同正文短信不据此一律删除。"
+    }
+  ]
+}
