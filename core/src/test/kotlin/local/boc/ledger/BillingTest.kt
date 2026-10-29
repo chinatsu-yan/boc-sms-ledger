@@ -26,12 +26,12 @@ class BillingTest {
         val seen=mutableListOf<QuoteKey>()
         val rates=RateLookup {key->seen+=key;RateResult.Available(FxQuote(key.base,key.quote,key.date ?: day,BigDecimal(when(key.base){"KWD"->"3.25";"CNY"->"0.142857";else->"7.20"}),"TEST",1))}
         val result=BillingEstimator.estimate(rows,emptyList(),cycle,day,rates)
-        val usd=BigDecimal("1.234")*BigDecimal("3.25")+BigDecimal("14.00")*BigDecimal("0.142857")+BigDecimal("2.50")
+        val usd=BigDecimal("1.234")*BigDecimal("3.25")+BigDecimal("2.50")
         assertEquals(usd,result.usdSubtotal);assertEquals(usd*BigDecimal("7.20"),result.cnySubtotal)
-        assertTrue(result.complete);assertEquals(3,result.covered)
+        assertTrue(result.complete);assertEquals(2,result.covered);assertEquals(BigDecimal("14.00"),result.nativeCnySubtotal)
         assertTrue(seen.contains(QuoteKey("KWD","USD",date("2024-02-19"))))
         assertTrue(seen.contains(QuoteKey("USD","CNY",null)))
-        assertEquals(3,seen.size)
+        assertEquals(2,seen.size);assertFalse(seen.any {it.base=="CNY"})
     }
     @Test fun linkedRefundAndReversalOffsetOriginalOnceAndRepaymentIsExcluded() {
         val today=date("2024-02-20");val cycle=BillingCycle.containing(today,25)

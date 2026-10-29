@@ -31,11 +31,14 @@ sealed class RateResult {
 fun interface RateLookup { fun get(key:QuoteKey):RateResult }
 data class EstimateLine(val id:Long,val date:LocalDate,val currency:String,val netAmount:BigDecimal,val usd:BigDecimal?,val quote:FxQuote?=null,val missing:String?=null)
 data class BillingEstimate(val cycle:BillingCycle,val lines:List<EstimateLine>,val undated:Int,val unlinkedAdjustments:Int,val pendingAdjustments:Int,val latest:FxQuote?,val latestMissing:String?) {
-    val covered get()=lines.count {it.usd!=null}
-    val missing get()=lines.size-covered
+    val foreignLines get()=lines.filter {it.currency!="CNY"}
+    val yuanLines get()=lines.filter {it.currency=="CNY"}
+    val nativeCnySubtotal:BigDecimal? get()=yuanLines.filter {it.missing==null}.let {if(it.isEmpty() && yuanLines.isNotEmpty()) null else it.fold(BigDecimal.ZERO){sum,line->sum+line.netAmount}}
+    val covered get()=foreignLines.count {it.usd!=null}
+    val missing get()=foreignLines.size-covered
     val usdSubtotal:BigDecimal? get()=if(covered==0) null else lines.mapNotNull {it.usd}.fold(BigDecimal.ZERO,BigDecimal::add)
     val cnySubtotal:BigDecimal? get()=usdSubtotal?.let {if(it.signum()==0) BigDecimal.ZERO else latest?.rate?.multiply(it)}
-    val complete get()=missing==0 && undated==0 && unlinkedAdjustments==0 && pendingAdjustments==0 && (usdSubtotal?.signum()==0 || latest!=null)
+    val complete get()=yuanLines.none {it.missing!=null} && missing==0 && undated==0 && unlinkedAdjustments==0 && pendingAdjustments==0 && (foreignLines.isEmpty() || usdSubtotal?.signum()==0 || latest!=null)
 }
 object BillingEstimator {
     private fun Event.fullDate():LocalDate?=date?.let {d->d.year?.let {LocalDate.of(it,d.month,d.day)}}
@@ -65,6 +68,7 @@ object BillingEstimator {
             when {
                 date>today -> EstimateLine(r.id,date,e.money.currency,net,null,missing="未来交易日期，未查询汇率")
                 net.signum()<0 -> EstimateLine(r.id,date,e.money.currency,net,null,missing="关联冲减超过消费，需复核")
+                e.money.currency=="CNY" -> EstimateLine(r.id,date,e.money.currency,net,null)
                 net.signum()==0 || e.money.currency=="USD" -> EstimateLine(r.id,date,e.money.currency,net,net)
                 else -> when(val result=validated(QuoteKey(e.money.currency,"USD",date))) {
                     is RateResult.Available -> EstimateLine(r.id,date,e.money.currency,net,net*result.quote.rate,result.quote)
