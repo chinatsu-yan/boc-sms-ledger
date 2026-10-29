@@ -234,7 +234,7 @@ class MainActivity:Activity() {
             1->if(SmsImport.hasRead(this)) startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName"))) else requestSms()
             2->work("重新解析",{db.reparse();Unit}) {"已重新解析；人工修正保留，已关联记录冻结"}
             3->{getSharedPreferences("import",MODE_PRIVATE).edit().putBoolean("enabled",false).apply();getSystemService(android.app.job.JobScheduler::class.java).cancel(41);updateStatus("已停止补扫；已存账目保留，可重新选择范围导入")}
-            4->AlertDialog.Builder(this).setTitle("本地账本 0.1.0").setMessage("仅覆盖仓库七类中行短信模板。\n\n资金流与经济分类分开：借记卡支付、转入、转出默认用途待确认，不直接计入消费或收入。信用卡本金还款只列偿债；人民币实付与外币偿债保存在同一事件内。\n\n撤销和退货须手动关联后冲减原消费；退款发生日与原消费日分别保留。未关联退款单列，不能当收入；汇总不是银行账单。\n\n广播只唤醒短信库补扫，分段拼接由系统短信库完成。后台限制或短信库延迟可能影响及时性；打开应用可重扫。来源号码与落款不能证明银行身份，请核对可疑短信。\n\n无网络权限，不上传数据，关闭系统备份。卸载将删除本地账本，当前未提供数据导出或备份。演示数据单独保存。\n\n购汇还款与独立借记卡扣款通知的跨短信关联尚未实现，默认用途待确认；不要将疑似本金扣款再次标为消费。未真机验收。") .setPositiveButton("知道了",null).show()
+            4->AlertDialog.Builder(this).setTitle("本地账本 0.1.1").setMessage("仅覆盖仓库七类中行短信模板。\n\n资金流与经济分类分开：借记卡支付、转入、转出默认用途待确认，不直接计入消费或收入。信用卡本金还款只列偿债；人民币实付与外币偿债保存在同一事件内。\n\n撤销和退货须手动关联后冲减原消费；退款发生日与原消费日分别保留。未关联退款单列，不能当收入；汇总不是银行账单。\n\n广播只唤醒短信库补扫，分段拼接由系统短信库完成。后台限制或短信库延迟可能影响及时性；打开应用可重扫。来源号码与落款不能证明银行身份，请核对可疑短信。\n\n无网络权限，不上传数据，关闭系统备份。卸载将删除本地账本，当前未提供数据导出或备份。演示数据单独保存。\n\n购汇还款与独立借记卡扣款通知的跨短信关联尚未实现，默认用途待确认；不要将疑似本金扣款再次标为消费。未真机验收。") .setPositiveButton("知道了",null).show()
         }}.show()
     }
     private fun loadDemo() = work("加载合成样例",{
@@ -299,7 +299,7 @@ class MainActivity:Activity() {
         fun input(label:String,value:String=""):EditText {box.addView(text(label,12f));return EditText(this).apply {setText(value);isSingleLine=true;box.addView(this)} }
         val kind=Spinner(this).apply {adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,Kind.entries.map {it.label});setSelection(old?.kind?.ordinal ?: 0)};box.addView(text("事件类型",12f));box.addView(kind)
         val tail=input("卡尾号（4位）",old?.tail.orEmpty())
-        val currency=input("币种（CNY / USD / SGD / JPY）",old?.money?.currency ?: "CNY")
+        val currency=input("币种（CNY / USD / SGD / JPY / TWD / HKD）",old?.money?.currency ?: "CNY")
         val amount=input("正数金额",old?.money?.amount?.toPlainString().orEmpty())
         val date=input("正文日期 yyyy-MM-dd 或 MM-dd，可留空",old?.date?.let { if(it.year==null) "%02d-%02d".format(it.month,it.day) else "%04d-%02d-%02d".format(it.year,it.month,it.day) }.orEmpty())
         val merchant=input("商户，可留空",old?.merchant.orEmpty())

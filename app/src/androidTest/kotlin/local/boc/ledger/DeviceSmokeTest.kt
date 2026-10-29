@@ -53,6 +53,55 @@ class DeviceSmokeTest:AndroidTestCase() {
             assertEquals(unknown,db.all().single().body)
         }
     }
+
+    fun testVersionOneUnknownCurrencyRowsReparseWithoutLosingManualEdits() {
+        val fixtures=context.assets.open("currency-variants.json").bufferedReader().use { org.json.JSONObject(it.readText()) }.getJSONArray("cases")
+        LedgerDb(context,"smoke.db").use {db->
+            for(i in 0 until fixtures.length()) {
+                val c=fixtures.getJSONObject(i)
+                assertTrue(db.ingest(c.getString("id"),"95566",c.getString("text"),1000L+i,"synthetic"))
+            }
+            // Persist exactly the unknown/event-null state produced by parser v1, then use the public replay entry.
+            db.writableDatabase.execSQL("UPDATE sms SET status='NEEDS_REVIEW', reason='unsupported currency in v1', event=NULL, parser_version=1")
+            val before=db.all()
+            assertTrue(before.all {it.effective==null && it.parserVersion==1})
+            val twd=before.first {it.body.contains("TWD")}
+            val hkd=before.first {it.body.contains("HKD")}
+            val corrected=BocParser.parse(twd.body).event!!.copy(money=Money("TWD",BigDecimal("2100.00")))
+            db.correct(twd.id,Category.SPENDING,corrected)
+            db.toggleExcluded(hkd.id)
+            db.reparse()
+            val after=db.all()
+            assertEquals(before.map {it.id}.toSet(),after.map {it.id}.toSet())
+            for(row in after) {
+                val original=before.first {it.id==row.id}
+                assertEquals(original.source,row.source)
+                assertEquals(original.body,row.body)
+                assertEquals(ParseStatus.PARSED,row.parsed.status)
+                assertEquals(BocParser.VERSION,row.parserVersion)
+                assertEquals(2,row.parserVersion)
+            }
+            val manual=after.first {it.id==twd.id}
+            assertEquals("2360.00",manual.parsed.event!!.money.amount.toPlainString())
+            assertEquals("2100.00",manual.effective!!.money.amount.toPlainString())
+            assertTrue(manual.manual)
+            assertEquals(Category.SPENDING,manual.category)
+            val parsedHkd=after.first {it.id==hkd.id}
+            assertEquals("HKD",parsedHkd.effective!!.money.currency)
+            assertEquals("38.50",parsedHkd.effective.money.amount.toPlainString())
+            assertTrue(parsedHkd.excluded)
+            assertTrue(db.history(twd.id).any {it.contains("重解析 v2")})
+            for(i in 0 until fixtures.length()) {
+                val c=fixtures.getJSONObject(i)
+                assertFalse(db.ingest(c.getString("id"),"95566",c.getString("text"),1000L+i,"synthetic"))
+            }
+            assertEquals(2,db.all().size)
+        }
+        LedgerDb(context,"smoke.db").use {db->
+            assertEquals(2,db.all().size)
+            assertEquals("2100.00",db.all().first {it.body.contains("TWD")}.effective!!.money.amount.toPlainString())
+        }
+    }
     fun testInboxBroadcastIdentityAndCandidateBoundary() {
         assertEquals(LedgerDb.sourceIdentity("1","95566",purchase,1000,"1"),LedgerDb.sourceIdentity("1","95566",purchase,1000,"1"))
         assertFalse(LedgerDb.sourceIdentity("1","95566",purchase,1000,"1")==LedgerDb.sourceIdentity("2","95566",purchase,1000,"1"))

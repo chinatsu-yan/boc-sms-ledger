@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "fixture_kind": "synthetic_currency_regression",
+  "description": "结构等价的合成回归样例；卡尾、日期、商户及金额均为替代测试数据，未保存用户原始短信。每条用例代表独立短信来源。",
+  "cases": [
+    {
+      "id": "twd_grouped_decimal_hyphen_merchant",
+      "text": "您的信用卡4444于2025年04月07日，在DEMO-SHOP消费TWD2,360.00元。【中国银行】",
+      "expected": {"currency": "TWD", "amount": "2360.00", "merchant": "DEMO-SHOP", "tail": "4444", "year": 2025, "month": 4, "day": 7}
+    },
+    {
+      "id": "hkd_decimal_purchase",
+      "text": "您的信用卡4444于2025年04月19日，在GAME_DEMO消费HKD38.50元。【中国银行】",
+      "expected": {"currency": "HKD", "amount": "38.50", "merchant": "GAME_DEMO", "tail": "4444", "year": 2025, "month": 4, "day": 19}
+    }
+  ],
+  "boundary_cases": [
+    {"id": "twd_invalid_grouping", "text": "您的信用卡4444于2025年04月07日，在DEMO-SHOP消费TWD2,36.00元。【中国银行】", "expected_status": "needs_review"},
+    {"id": "hkd_excess_decimal_places", "text": "您的信用卡4444于2025年04月19日，在GAME_DEMO消费HKD38.500元。【中国银行】", "expected_status": "needs_review"},
+    {"id": "unknown_currency_stays_review", "text": "您的信用卡4444于2025年04月19日，在GAME_DEMO消费ZZZ38.50元。【中国银行】", "expected_status": "needs_review"}
+  ]
+}

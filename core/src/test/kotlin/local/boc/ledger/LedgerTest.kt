@@ -84,6 +84,46 @@ class LedgerTest {
         assertEquals(ParseStatus.PARSED,BocParser.parse(body).status)
         assertEquals("优惠商店_失败重试",BocParser.parse(body).event!!.merchant)
     }
+
+    @Test fun twdAndHkdPurchaseVariantsKeepOriginalCurrencyAndFields() {
+        val variants=JsonParser.parseString(File("fixtures/synthetic/currency-variants.json").readText()).asJsonObject
+        val entries=variants["cases"].asJsonArray.mapIndexed { index,item ->
+            val c=item.asJsonObject;val expected=c["expected"].asJsonObject
+            val result=BocParser.parse(c["text"].asString)
+            assertEquals(c["id"].asString,ParseStatus.PARSED,result.status)
+            val e=result.event!!
+            assertEquals(Kind.CREDIT_PURCHASE,e.kind)
+            assertEquals(expected["currency"].asString,e.money.currency)
+            assertEquals(expected["currency"].asString,e.money.rawCurrency)
+            assertEquals(expected["amount"].asString,e.money.amount.toPlainString())
+            assertEquals(expected["merchant"].asString,e.merchant)
+            assertEquals(expected["tail"].asString,e.tail)
+            assertEquals(expected["year"].asInt,e.date!!.year)
+            assertEquals(expected["month"].asInt,e.date.month)
+            assertEquals(expected["day"].asInt,e.date.day)
+            Entry(index.toLong(),e,Category.SPENDING)
+        }
+        val totals=Accounting.totals(entries,emptyList())
+        assertEquals(setOf("TWD","HKD"),totals.keys)
+        assertEquals(BigDecimal("2360.00"),totals["TWD"]!!.net)
+        assertEquals(BigDecimal("38.50"),totals["HKD"]!!.net)
+    }
+    @Test fun newCurrencyInvalidInputsStayVisibleForReview() {
+        val variants=JsonParser.parseString(File("fixtures/synthetic/currency-variants.json").readText()).asJsonObject
+        variants["boundary_cases"].asJsonArray.forEach { item ->
+            val c=item.asJsonObject;val result=BocParser.parse(c["text"].asString)
+            assertEquals(c["id"].asString,ParseStatus.NEEDS_REVIEW,result.status)
+            assertNull(result.event)
+        }
+    }
+    @Test fun newCurrenciesUseExistingReversalAndRefundTemplates() {
+        val twd="您的信用卡4444于2025年04月07日，在DEMO-SHOP撤销TWD2,360.00元。【中国银行】"
+        val hkd="您的信用卡4444于2025年04月19日成功退货HKD38.50元【中国银行】"
+        assertEquals(Kind.CREDIT_REVERSAL,BocParser.parse(twd).event!!.kind)
+        assertEquals("TWD",BocParser.parse(twd).event!!.money.currency)
+        assertEquals(Kind.CREDIT_REFUND,BocParser.parse(hkd).event!!.kind)
+        assertEquals("HKD",BocParser.parse(hkd).event!!.money.currency)
+    }
     private fun rows()=listOf(
         Entry(1,event("credit_sgd_purchase"),Category.SPENDING),
         Entry(2,event("credit_sgd_reversal"),Category.PENDING),

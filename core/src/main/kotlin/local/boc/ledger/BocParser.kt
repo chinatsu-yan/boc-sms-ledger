@@ -4,8 +4,8 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 object BocParser {
-    const val VERSION = 1
-    private const val MONEY = "(人民币|RMB|CNY|USD|SGD|JPY)([0-9.,]+)"
+    const val VERSION = 2
+    private const val MONEY = "(人民币|RMB|CNY|USD|SGD|JPY|TWD|HKD)([0-9.,]+)"
     private val debit = Regex("您的借记卡账户([0-9]{4})，于([0-9]{2})月([0-9]{2})日(网上支付支取|收入\\(网银跨行\\)|手机银行支取\\(跨行支付\\))人民币([0-9.,]+)元,交易后余额([0-9.,]+)【中国银行】")
     private const val PREFIX = "您的信用卡([0-9]{4})于([0-9]{4})年([0-9]{2})月([0-9]{2})日"
     private val credit = Regex(PREFIX + "，在(.+?)(消费|撤销)" + MONEY + "元。?【中国银行】")
