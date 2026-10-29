@@ -29,7 +29,7 @@ class LedgerSheet private constructor(context:Context,private val builder:Builde
         heading.addView(label(builder.title,20f).apply {setTypeface(null,Typeface.BOLD)},LinearLayout.LayoutParams(0,-2,1f));root.addView(heading)
         val body=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL;setPadding(0,dp(12),0,dp(12))}
         builder.message?.let {body.addView(label(it,14f).apply {setLineSpacing(dp(4).toFloat(),1f);setTextIsSelectable(true)})}
-        builder.items?.forEachIndexed {i,value->body.addView(Button(context).apply {text=value;textSize=14f;isAllCaps=false;gravity=Gravity.START or Gravity.CENTER_VERTICAL;minHeight=dp(52);setPadding(dp(14),dp(12),dp(14),dp(12));setTextColor(0xff355e67.toInt());stateListAnimator=null;background=GradientDrawable().apply {setColor(0xffedf2ee.toInt());cornerRadius=dp(12).toFloat()};setOnClickListener {builder.itemClick?.onClick(this@LedgerSheet,i);if(open.lastOrNull()===this@LedgerSheet) dismiss()}},LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(7)})}
+        builder.items?.forEachIndexed {i,value->body.addView(Button(context).apply {text=value;textSize=14f;isAllCaps=false;gravity=Gravity.START or Gravity.CENTER_VERTICAL;minHeight=dp(52);setPadding(dp(14),dp(12),dp(14),dp(12));setTextColor(0xff355e67.toInt());stateListAnimator=null;background=GradientDrawable().apply {setColor(if(i==builder.selectedItem) 0xffd8e7e2.toInt() else 0xffedf2ee.toInt());cornerRadius=dp(12).toFloat()};setOnClickListener {builder.itemClick?.onClick(this@LedgerSheet,i);if(open.lastOrNull()===this@LedgerSheet) dismiss()}},LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=dp(7)})}
         builder.view?.let {body.addView(it)}
         val scroll=ScrollView(context).apply {isFillViewport=false;addView(body)}
         val maxBody=(context.resources.displayMetrics.heightPixels*.62f).toInt()
@@ -49,6 +49,8 @@ class LedgerSheet private constructor(context:Context,private val builder:Builde
     override fun show() {open.add(this);super.show();window!!.setLayout(context.resources.displayMetrics.widthPixels-dp(16),WindowManager.LayoutParams.WRAP_CONTENT)}
     fun getButton(which:Int):Button=actions.getValue(which)
     class Builder(private val context:Context) {
+        var selectedItem:Int=-1;private set
+        fun setSelectedItem(index:Int)=apply {selectedItem=index}
         var title:CharSequence="详情";private set
         var message:CharSequence?=null;private set
         var view:View?=null;private set

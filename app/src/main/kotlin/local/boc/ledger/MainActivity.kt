@@ -37,8 +37,11 @@ class MainActivity:Activity() {
     private lateinit var status:TextView
     private lateinit var summary:TextView
     private lateinit var list:ListView
-    private lateinit var accountFilter:Spinner
-    private lateinit var currencyFilter:Spinner
+    private var selectedAccount:String?=null
+    private var selectedCurrency:String?=null
+    private var selectedCategory:String?=null
+    private var creditAccount:String?=null
+    private var ledgerUsesCycle=false
     private lateinit var scanButton:Button
     private lateinit var billingBox:LinearLayout
     private lateinit var billingText:TextView
@@ -127,7 +130,7 @@ class MainActivity:Activity() {
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
     private fun text(value:String,size:Float=14f,bold:Boolean=false)=TextView(this).apply { text=value;textSize=size;setTextColor(Color.rgb(38,56,68));if(bold)setTypeface(null,Typeface.BOLD);setPadding(0,dp(4),0,dp(4)) }
     private fun button(label:String,action:()->Unit)=Button(this).apply {
-        text=label;textSize=12f;isAllCaps=false;setTextColor(Color.rgb(53,94,103));minHeight=dp(44);minimumHeight=dp(44)
+        defaultFocusHighlightEnabled=false;text=label;textSize=12f;isAllCaps=false;setTextColor(Color.rgb(53,94,103));minHeight=dp(44);minimumHeight=dp(44)
         stateListAnimator=null;elevation=0f;background=rounded(Color.rgb(237,240,236),10)
         setPadding(dp(10),dp(6),dp(10),dp(6));setOnClickListener {if(!busy) action()}
     }
@@ -136,7 +139,7 @@ class MainActivity:Activity() {
     private fun gap(box:LinearLayout,n:Int=16) {box.addView(View(this),LinearLayout.LayoutParams(1,dp(n)))}
     private fun rule(box:LinearLayout) {box.addView(View(this).apply {setBackgroundColor(Color.rgb(226,230,223))},LinearLayout.LayoutParams(-1,dp(1)))}
     private fun number(value:String,size:Int=36)=text(value,size.toFloat(),false).apply {maxLines=1;setAutoSizeTextTypeUniformWithConfiguration(16,size,1,android.util.TypedValue.COMPLEX_UNIT_SP)}
-    private fun link(label:String,action:()->Unit)=text(label,12f).apply {minHeight=dp(40);gravity=android.view.Gravity.CENTER_VERTICAL;setTextColor(Color.rgb(53,94,103));isClickable=true;setOnClickListener {if(!busy) action()}}
+    private fun link(label:String,action:()->Unit)=text(label,12f).apply {defaultFocusHighlightEnabled=false;minHeight=dp(40);gravity=android.view.Gravity.CENTER_VERTICAL;setTextColor(Color.rgb(53,94,103));isClickable=true;setOnClickListener {if(!busy) action()}}
     private fun navItem(label:String,kind:Int,target:String)=LinearLayout(this).apply {
         orientation=LinearLayout.VERTICAL;gravity=android.view.Gravity.CENTER;setPadding(0,dp(8),0,dp(6));contentDescription=label
         addView(LedgerIcon(this@MainActivity,kind),LinearLayout.LayoutParams(dp(23),dp(23)))
@@ -144,32 +147,31 @@ class MainActivity:Activity() {
         setOnClickListener {navigate(target,primary=true)}
     }
     private fun column()=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(13),dp(16),dp(13))}
-    private fun horizontal(vararg children:View)=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;children.forEachIndexed {i,v->addView(v,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f).apply {if(i<children.lastIndex) rightMargin=dp(6)})} }
+    private fun horizontal(vararg children:View)=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL;children.forEachIndexed {i,v->addView(v,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f).apply {if(i<children.lastIndex) rightMargin=dp(6)})} }
     private fun panel(color:Int=Color.rgb(241,239,233))=column().apply {
         background=android.graphics.drawable.GradientDrawable().apply {setColor(color);cornerRadius=dp(18).toFloat()}
         val margin=LinearLayout.LayoutParams(-1,-2);margin.setMargins(0,dp(10),0,dp(10));layoutParams=margin
     }
-    private data class Screen(val page:String,val kind:AccountKind,val from:LocalDate?,val to:LocalDate?,val query:String,val statsKind:AccountKind,val statsCurrency:String,val statsAccount:String?,val cycle:Int,val account:String?,val currency:String?,val position:Int,val top:Int,val detailId:Long?=null):java.io.Serializable
+    private data class Screen(val page:String,val kind:AccountKind,val from:LocalDate?,val to:LocalDate?,val query:String,val statsKind:AccountKind,val statsCurrency:String,val statsAccount:String?,val cycle:Int,val account:String?,val currency:String?,val position:Int,val top:Int,val detailId:Long?=null,val category:String?=null,val usesCycle:Boolean=false,val creditAccount:String?=null):java.io.Serializable
     private val backStack=java.util.ArrayDeque<Screen>()
     private val tabStates=mutableMapOf<String,Screen>()
     private var lastBack=0L
     private val rowReferences=mutableMapOf<Event,UsdReference>()
     private val referenceWaiters=mutableMapOf<Event,MutableList<TextView>>()
-    private fun snapshot()=Screen(page,accountKind,from,to,query,statsKind,statsCurrency,statsAccount,cycleOffset,accountFilter.selectedItem?.toString(),currencyFilter.selectedItem?.toString(),list.firstVisiblePosition,list.getChildAt(0)?.top ?: 0)
+    private fun snapshot()=Screen(page,accountKind,from,to,query,statsKind,statsCurrency,statsAccount,cycleOffset,selectedAccount,selectedCurrency,list.firstVisiblePosition,list.getChildAt(0)?.top ?: 0,category=selectedCategory,usesCycle=ledgerUsesCycle,creditAccount=creditAccount)
     private fun invalidateEstimate() {fxEpoch.incrementAndGet();fxTask?.cancel(true);lastFxRequest=null;lastEstimate=null}
     private fun restore(screen:Screen) {
-        page=screen.page;accountKind=screen.kind;from=screen.from;to=screen.to;query=screen.query;statsKind=screen.statsKind;statsCurrency=screen.statsCurrency;statsAccount=screen.statsAccount;cycleOffset=screen.cycle;batch=false;selectedIds.clear();invalidateEstimate();reload()
-        refreshing=true
-        accountFilter.setSelection((0 until accountFilter.count).firstOrNull {accountFilter.getItemAtPosition(it)==screen.account} ?: 0)
-        currencyFilter.setSelection((0 until currencyFilter.count).firstOrNull {currencyFilter.getItemAtPosition(it)==screen.currency} ?: 0)
-        refreshing=false;render();list.post {list.setSelectionFromTop(screen.position,screen.top);screen.detailId?.let(::detail)}
+        page=screen.page;accountKind=screen.kind;from=screen.from;to=screen.to;query=screen.query;statsKind=screen.statsKind;statsCurrency=screen.statsCurrency;statsAccount=screen.statsAccount;cycleOffset=screen.cycle
+        selectedAccount=screen.account;selectedCurrency=screen.currency;selectedCategory=screen.category;ledgerUsesCycle=screen.usesCycle;creditAccount=screen.creditAccount
+        batch=false;selectedIds.clear();invalidateEstimate();reload();list.post {list.setSelectionFromTop(screen.position,screen.top);screen.detailId?.let(::detail)}
     }
+
     private fun navigate(target:String,primary:Boolean=false) {
         lastBack=0
-        if(primary) {tabStates[page]=snapshot();backStack.clear();tabStates[target]?.let {restore(it);return}}
+        if(primary) {if(target=="credit" && page=="debit" && ledgerUsesCycle) tabStates[target]?.let {tabStates[target]=it.copy(cycle=cycleOffset,creditAccount=selectedAccount)};tabStates[page]=snapshot();backStack.clear();tabStates[target]?.let {restore(it);return}}
         else backStack.addLast(snapshot())
         page=target;batch=false;selectedIds.clear()
-        if(target=="debit") accountKind=AccountKind.DEBIT else if(target in listOf("home","credit")) accountKind=AccountKind.CREDIT
+        if(target=="debit") {accountKind=AccountKind.DEBIT;selectedAccount=null;selectedCurrency=null;selectedCategory=null;ledgerUsesCycle=false;from=null;to=null;query=""} else if(target in listOf("home","credit")) accountKind=AccountKind.CREDIT
         if(primary) {from=null;to=null;query=""}
         invalidateEstimate();reload();list.post {list.setSelectionFromTop(0,0)}
     }
@@ -179,7 +181,7 @@ class MainActivity:Activity() {
         if(window.decorView.height-visible.height()>dp(160)) {
             (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(window.decorView.windowToken,0);return
         }
-        if(backStack.isNotEmpty()) {restore(backStack.removeLast());return}
+        if(backStack.isNotEmpty()) {val previous=backStack.removeLast();restore(if(page=="debit" && ledgerUsesCycle && previous.page=="credit") previous.copy(cycle=cycleOffset,creditAccount=selectedAccount) else previous);return}
         if(page!="home") {navigate("home",primary=true);return}
         val now=android.os.SystemClock.elapsedRealtime()
         if(lastBack!=0L && now-lastBack<2000) finish() else {lastBack=now;toast("再按一次返回退出")}
@@ -196,7 +198,6 @@ class MainActivity:Activity() {
 
         dashboard=column().apply {setPadding(0,0,0,0)};root.addView(dashboard)
         ledgerControls=column().apply {setPadding(0,0,0,0)};root.addView(ledgerControls)
-        accountFilter=LedgerSpinner(this);currencyFilter=LedgerSpinner(this);ledgerControls.addView(horizontal(accountFilter,currencyFilter))
         billingBox=column().apply {setPadding(0,0,0,0)}
         billingDayButton=button("设置账单日") {configureStatementDay()}
         billingBox.addView(horizontal(button("上一账期") {cycleOffset--;lastFxRequest=null;refreshCreditEstimate();renderDashboard()},billingDayButton,button("下一账期") {cycleOffset++;lastFxRequest=null;refreshCreditEstimate();renderDashboard()}))
@@ -227,7 +228,7 @@ class MainActivity:Activity() {
         else BillingCycle.containing(LocalDate.now(),statement,cycleOffset)
     }
     private fun pendingAssociations() {
-        val pending=rows.filter {it.recognizedTransaction && it.effective?.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) && links.none {l->l.adjustmentId==it.id}}
+        val pending=rows.filter {it.recognizedTransaction && it.effective?.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) && (creditAccount==null || it.effective?.account==creditAccount) && links.none {l->l.adjustmentId==it.id}}
         LedgerSheet.Builder(this).setTitle("待关联（${pending.size}）").setItems(pending.map {"${it.effective!!.money} · ${it.effective.merchant ?: "商户未提供"}\n${it.effective.date ?: "日期未知"} · 查看原文与候选"}.toTypedArray()) {_,i->linkDialog(pending[i])}.setNegativeButton("关闭",null).show()
     }
     private fun repaymentLabel():String {
@@ -255,7 +256,7 @@ class MainActivity:Activity() {
         month.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {override fun onItemSelected(p:AdapterView<*>?,v:View?,i:Int,id:Long)=update();override fun onNothingSelected(p:AdapterView<*>?) {}}
         day.setOnValueChangedListener {_,_,_->update()}
         dialog.setOnShowListener {update();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            if(RepaymentDate.valid(statement,month.selectedItemPosition,day.value)) {prefs.edit().putInt("repayment_month",month.selectedItemPosition).putInt("repayment_day",day.value).apply();cycleOffset=0;lastFxRequest=null;dialog.dismiss();refreshCreditEstimate();renderDashboard()}
+            if(RepaymentDate.valid(statement,month.selectedItemPosition,day.value)) {prefs.edit().putInt("repayment_month",month.selectedItemPosition).putInt("repayment_day",day.value).apply();cycleOffset=0;lastFxRequest=null;dialog.dismiss();refreshCreditEstimate();render()}
         }};dialog.show()
     }
     private val ink=Color.rgb(38,56,68)
@@ -286,14 +287,14 @@ class MainActivity:Activity() {
     }
     private fun categoryTile(name:String)=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;gravity=android.view.Gravity.CENTER;setPadding(dp(6),dp(12),dp(6),dp(10));background=rounded(0xffeeefe8.toInt(),12);addView(LedgerIcon(this@MainActivity,5+(db.categories().indexOf(name).coerceAtLeast(0)%6)).apply {active=true},LinearLayout.LayoutParams(dp(24),dp(24)));addView(text(name,13f).apply {gravity=android.view.Gravity.CENTER;setPadding(0,dp(8),0,0)});setOnClickListener {info(name,"在流水中点分类标签，或批量选择后标记。")}}
     private fun heading(label:String,actionLabel:String="",action:()->Unit={}) {gap(dashboard,18);dashboard.addView(split(text(label,16f,true),link(actionLabel,action)));gap(dashboard,4)}
-    private fun statsDate(r:StoredSms):LocalDate?=if(r.effective?.accountKind==AccountKind.CREDIT) r.effective.date?.let {d->d.year?.let {LocalDate.of(it,d.month,d.day)}} else Instant.ofEpochMilli(r.received).atZone(zone).toLocalDate()
+    private fun statsDate(r:StoredSms):LocalDate?=SmsDate.fullDate(r.effective)
     private fun scopeRows(kind:AccountKind)=rows.filter {r->val day=statsDate(r);r.recognizedTransaction && r.effective!!.accountKind==kind && day!=null && (from==null || day>=from) && (to==null || day<=to) && (statsAccount==null || r.effective.account==statsAccount)}
     private fun statsAccounts() {
         val accounts=rows.filter {it.recognizedTransaction}.map {it.effective!!.account}.distinct().sorted();val choices=listOf("全部借记卡","全部信用卡")+accounts
         LedgerSheet.Builder(this).setTitle("统计账户").setItems(choices.toTypedArray()) {_,i->if(i<2) {statsKind=if(i==0) AccountKind.DEBIT else AccountKind.CREDIT;statsAccount=null} else {statsAccount=accounts[i-2];statsKind=rows.first {it.effective?.account==statsAccount}.effective!!.accountKind};renderDashboard()}.setNegativeButton("取消",null).show()
     }
     private fun netPoints(source:List<StoredSms>)=Spending.points(rows.map(StoredSms::entry),links,expenseLabels,source.map {it.id}.toSet())
-    private fun rangeName()=if(from==null && to==null) "全部日期⌄" else "${from ?: "…"} — ${to ?: "…"}⌄"
+    private fun rangeName()=if(from==null && to==null) "全部日期" else "${from ?: "…"} — ${to ?: "…"}"
     private fun categoryDialog(ids:Set<Long>) {
         if(ids.isEmpty()) {toast("先选择流水");return}
         val options=db.categories()+listOf("待分类","转账","还款")
@@ -301,8 +302,36 @@ class MainActivity:Activity() {
             LedgerSheet.Builder(this).setTitle("标记为${options[i]}").setMessage("${ids.size} 笔流水 · 原文保留").setPositiveButton("保存") {_,_->safe {db.classify(ids,options[i]);batch=false;selectedIds.clear();LedgerSheet.closeAll()}}.setNegativeButton("取消",null).show()
         }.setNegativeButton("取消",null).show()
     }
-    private fun pickFilter(spinner:Spinner,title:String) {val values=(0 until spinner.count).map {spinner.getItemAtPosition(it).toString()};LedgerSheet.Builder(this).setTitle(title).setItems(values.toTypedArray()) {_,i->spinner.setSelection(i)}.setNegativeButton("取消",null).show()}
-    private fun searchDialog() {val field=EditText(this).apply {setText(query);hint="商户、原文、金额"};LedgerSheet.Builder(this).setTitle("搜索流水").setView(field).setPositiveButton("搜索") {_,_->query=field.text.toString();render()}.setNeutralButton("清空") {_,_->query="";render()}.setNegativeButton("取消",null).show()}
+    private fun filterControl(label:String,action:()->Unit)=button(label,action).apply {
+        textSize=12f;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;gravity=android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+        height=dp(44);minHeight=dp(44);setPadding(dp(12),0,dp(10),0);compoundDrawablePadding=dp(6)
+        setCompoundDrawables(null,null,LedgerArrow().apply {setBounds(0,0,dp(16),dp(16))},null)
+    }
+    private fun arrow(direction:Int,description:String,action:()->Unit)=ImageView(this).apply {
+        defaultFocusHighlightEnabled=false;setImageDrawable(LedgerArrow(direction));setPadding(dp(13),dp(12),dp(13),dp(12));minimumWidth=dp(44);minimumHeight=dp(44);contentDescription=description;background=rounded(0xffedf2ee.toInt(),12);setOnClickListener {action()}
+    }
+    private fun choose(title:String,values:List<String>,selected:String?,action:(String)->Unit) {
+        LedgerSheet.Builder(this).setTitle(title).setSelectedItem(values.indexOf(selected)).setItems(values.toTypedArray()) {_,i->action(values[i])}.setNegativeButton("取消",null).show()
+    }
+    private fun filtersChanged() {batch=false;selectedIds.clear();render();list.post {list.setSelectionFromTop(0,0)}}
+    private fun clearFilters() {selectedAccount=null;selectedCurrency=null;selectedCategory=null;query="";from=null;to=null;ledgerUsesCycle=false;filtersChanged()}
+    private fun pickLedgerAccount() {val values=listOf("全部账户")+rows.filter {it.recognizedTransaction && it.effective!!.accountKind==accountKind}.map {it.effective!!.account}.distinct().sorted();choose("选择账户",values,selectedAccount) {selectedAccount=it.takeUnless {it=="全部账户"};filtersChanged()}}
+    private fun pickLedgerCurrency() {val values=listOf("全部币种")+rows.filter {it.recognizedTransaction && it.effective!!.accountKind==accountKind}.map {it.effective!!.money.currency}.distinct().sorted();choose("选择币种",values,selectedCurrency) {selectedCurrency=it.takeUnless {it=="全部币种"};filtersChanged()}}
+    private fun pickLedgerCategory() {choose("筛选分类",listOf("全部分类")+db.categories()+listOf("待分类","转账","还款","收入","其他非收支"),selectedCategory) {selectedCategory=it.takeUnless {it=="全部分类"};filtersChanged()}}
+    private fun selectLedgerKind(kind:AccountKind) {accountKind=kind;selectedAccount=null;selectedCurrency=null;selectedCategory=null;from=null;to=null;query="";ledgerUsesCycle=kind==AccountKind.CREDIT;filtersChanged()}
+    private fun openCreditLedger() {navigate("debit");accountKind=AccountKind.CREDIT;selectedAccount=creditAccount;selectedCurrency=null;selectedCategory=null;ledgerUsesCycle=true;filtersChanged()}
+    private fun changeCycle(delta:Int) {cycleOffset+=delta;lastFxRequest=null;if(page=="debit") filtersChanged() else {refreshCreditEstimate();renderDashboard()}}
+    private fun cycleBar():View {
+        val day=statementPrefs().getInt("statement_day",0)
+        if(day==0) return filterControl("设置账单日") {configureStatementDay()}
+        val cycle=selectedCycle(day)
+        return LinearLayout(this).apply {orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL
+            addView(arrow(-1,"上一账期") {changeCycle(-1)},LinearLayout.LayoutParams(dp(44),dp(44)))
+            addView(text("${cycle.start} — ${cycle.end}",13f,true).apply {gravity=android.view.Gravity.CENTER;maxLines=1;setAutoSizeTextTypeUniformWithConfiguration(10,13,1,android.util.TypedValue.COMPLEX_UNIT_SP)},LinearLayout.LayoutParams(0,dp(44),1f))
+            addView(arrow(1,"下一账期") {changeCycle(1)},LinearLayout.LayoutParams(dp(44),dp(44)))
+        }
+    }
+    private fun searchDialog() {val field=EditText(this).apply {setText(query);hint="商户、原文、金额"};LedgerSheet.Builder(this).setTitle("搜索流水").setView(field).setPositiveButton("搜索") {_,_->query=field.text.toString();filtersChanged()}.setNeutralButton("清空") {_,_->query="";filtersChanged()}.setNegativeButton("取消",null).show()}
     private fun dueInfo():Pair<String,String> {
         val p=statementPrefs();val s=p.getInt("statement_day",0);val d=p.getInt("repayment_day",0);val m=p.getInt("repayment_month",1)
         if(!RepaymentDate.valid(s,m,d)) return "未设置" to "设置日期"
@@ -320,7 +349,7 @@ class MainActivity:Activity() {
         val due=dueInfo()
         when(page) {
             "home"->{
-                dashboard.addView(horizontal(tag(if(homeAll) "全部⌄" else "本月⌄") {homeAll=!homeAll;renderDashboard()},link("借记卡 · ⓘ") {info("收支口径","借记卡资金流入/流出，包含转账与还款；不是消费统计。按接收日期选择范围，信用卡独立。余额取每卡每币种最近可用短信快照，不是实时余额。")}))
+                dashboard.addView(horizontal(filterControl(if(homeAll) "全部" else "本月") {homeAll=!homeAll;renderDashboard()},link("借记卡 · ⓘ") {info("收支口径","借记卡资金流入/流出，包含转账与还款；不是消费统计。按接收日期选择范围，信用卡独立。余额取每卡每币种最近可用短信快照，不是实时余额。")}))
                 val today=LocalDate.now();val visible=debit.filter {homeAll || Instant.ofEpochMilli(it.received).atZone(zone).toLocalDate() in today.withDayOfMonth(1)..today}
                 val totals=DebitDashboard.flows(debit.map(StoredSms::entry),visible.map {it.id}.toSet());gap(dashboard,19)
                 if(totals.isEmpty()) dashboard.addView(link("暂无借记流水 · 查看扫描设置 →") {navigate("settings")})
@@ -331,33 +360,38 @@ class MainActivity:Activity() {
                 snapshots.groupBy {it.currency}.forEach {(c,group)->val known=group.mapNotNull {it.money};dashboard.addView(number("${if(c=="CNY") "¥" else c+" "}"+(if(known.size==group.size) money(known.fold(BigDecimal.ZERO){a,b->a+b.amount}) else "—"),42));val earliest=group.mapNotNull {it.received}.minOrNull();dashboard.addView(muted("${known.size} / ${group.size} 张卡 · "+(earliest?.let {Instant.ofEpochMilli(it).atZone(zone).format(DateTimeFormatter.ofPattern("MM.dd HH:mm"))} ?: "无快照"),11f))}
                 heading("我的账户","查看流水 ↗") {navigate("debit")}
                 dashboard.addView(panel(Color.rgb(238,234,225)).apply {addView(split(bankTitle("中国银行 · 借记卡","中"),muted("${debit.map {it.effective!!.tail}.distinct().size} 张卡")));gap(this,12);val points=netPoints(visible).groupBy {it.currency};if(points.isEmpty()) addView(split(muted("消费净额"),text("—",24f))) else points.forEach {(c,p)->addView(split(muted("消费净额 · $c"),number(money(p.fold(BigDecimal.ZERO){a,b->a+b.amount}),25)))};setOnClickListener {navigate("debit")}})
-                dashboard.addView(panel(Color.rgb(40,74,84)).apply {addView(split(bankTitle("信用卡 · 本期消费","V",true),muted("参考估算",11f).apply {setTextColor(0xffc4d5d8.toInt())}));gap(this,10);addView(number("US$ "+estimateMoney(lastEstimate?.usdSubtotal),30).apply {setTextColor(Color.WHITE)});addView(muted("人民币单列  CNY "+money(lastEstimate?.nativeCnySubtotal),13f).apply {setTextColor(0xffc4d5d8.toInt())});gap(this,10);addView(split(muted("${due.first} 还款").apply {setTextColor(0xffc4d5d8.toInt())},text(due.second,12f).apply {setTextColor(Color.WHITE)}));setOnClickListener {navigate("credit")}})
+                dashboard.addView(panel(Color.rgb(40,74,84)).apply {addView(split(bankTitle(creditAccount ?: "信用卡 · 本期消费","V",true),muted("参考估算",11f).apply {setTextColor(0xffc4d5d8.toInt())}));gap(this,10);addView(number("US$ "+estimateMoney(lastEstimate?.usdSubtotal),30).apply {setTextColor(Color.WHITE)});addView(muted("人民币单列  CNY "+money(lastEstimate?.nativeCnySubtotal),13f).apply {setTextColor(0xffc4d5d8.toInt())});gap(this,10);addView(split(muted("${due.first} 还款").apply {setTextColor(0xffc4d5d8.toInt())},text(due.second,12f).apply {setTextColor(Color.WHITE)}));setOnClickListener {navigate("credit")}})
                 dashboard.addView(link(if(demo) "● 合成演示 · 本地账本" else "● "+scanButton.text.toString()) {navigate("settings")}.apply {gravity=android.view.Gravity.CENTER})
             }
             "debit"->{
-                dashboard.addView(button(if(query.isEmpty()) "⌕  搜索商户、原文、金额" else "⌕  $query") {searchDialog()});gap(dashboard,10)
-                dashboard.addView(horizontal(tag(accountKind.label+"⌄") {accountKind=if(accountKind==AccountKind.DEBIT) AccountKind.CREDIT else AccountKind.DEBIT;reload()},tag(rangeName()) {filterRangeDialog()},tag(currencyFilter.selectedItem?.toString() ?: "币种⌄") {pickFilter(currencyFilter,"币种")},link(if(batch) "取消" else "批量") {batch=!batch;selectedIds.clear();render()}))
-                dashboard.addView(link(accountFilter.selectedItem?.toString()+"⌄") {pickFilter(accountFilter,"账户")})
-                val totals=netPoints(shown).groupBy {it.currency};dashboard.addView(split(muted(if(totals.isEmpty()) "暂无消费" else totals.entries.joinToString(" · "){(c,p)->"$c "+money(p.fold(BigDecimal.ZERO){a,b->a+b.amount})}),tag("待分类 ${shown.count {labelFor(it)=="待分类"}}") {val pending=shown.filter {labelFor(it)=="待分类" && it.effective!!.kind in listOf(Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)};batch=true;selectedIds.clear();selectedIds.addAll(pending.map {it.id});render()}))
+                dashboard.addView(button(if(query.isEmpty()) "搜索商户、原文、金额" else query) {searchDialog()}.apply {gravity=android.view.Gravity.START;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;height=dp(44)});gap(dashboard,10)
+                dashboard.addView(horizontal(filterControl(accountKind.label) {choose("账户类型",AccountKind.entries.map {it.label},accountKind.label) {selectLedgerKind(AccountKind.entries.first {kind->kind.label==it})}},filterControl(selectedAccount ?: "全部账户") {pickLedgerAccount()}));gap(dashboard,8)
+                dashboard.addView(horizontal(filterControl(selectedCurrency ?: "全部币种") {pickLedgerCurrency()},filterControl(selectedCategory ?: "全部分类") {pickLedgerCategory()}));gap(dashboard,8)
+                if(accountKind==AccountKind.CREDIT && ledgerUsesCycle) {dashboard.addView(cycleBar());dashboard.addView(split(muted("按交易日 · 当前账期",11f),link("自选日期") {filterRangeDialog()}))}
+                else dashboard.addView(filterControl(rangeName()) {filterRangeDialog()})
+                dashboard.addView(horizontal(muted("${shown.size} 笔流水",12f),link("清除筛选") {clearFilters()},link(if(batch) "取消批量" else "批量分类") {batch=!batch;selectedIds.clear();render()}))
+                val totals=netPoints(shown).groupBy {it.currency}
+                val amounts=totals.mapValues {(_,p)->p.fold(BigDecimal.ZERO){a,b->a+b.amount}}
+                dashboard.addView(filterControl(if(amounts.size==1) amounts.entries.single().let {"${it.key} ${money(it.value)} · 消费净额"} else if(amounts.isEmpty()) "暂无消费净额" else "${amounts.size} 种原币 · 查看消费净额") {info("筛选内消费净额",amounts.entries.joinToString("\n") {"${it.key}  ${money(it.value)}"}.ifEmpty {"暂无符合条件的消费"})});gap(dashboard,10)
                 if(batch) dashboard.addView(button("已选 ${selectedIds.size} 笔 · 选择分类") {categoryDialog(selectedIds.toSet())})
-                if(shown.isEmpty()) {gap(dashboard,28);dashboard.addView(text("暂无符合条件的流水",16f));dashboard.addView(link("清空筛选 →") {query="";from=null;to=null;reload()})}
+                if(shown.isEmpty()) {gap(dashboard,20);dashboard.addView(text("暂无符合条件的流水",16f));dashboard.addView(link("清除筛选 →") {clearFilters()})}
             }
             "stats"->renderStats()
             "credit"->{
-                dashboard.addView(split(muted("中国银行 VISA · 信用账户"),tag("日期设置") {dateSettings()}))
+                dashboard.addView(horizontal(filterControl(creditAccount ?: "全部信用卡") {val values=listOf("全部信用卡")+rows.filter {it.recognizedTransaction && it.effective!!.accountKind==AccountKind.CREDIT}.map {it.effective!!.account}.distinct().sorted();choose("信用卡账户",values,creditAccount) {creditAccount=it.takeUnless {it=="全部信用卡"};lastFxRequest=null;refreshCreditEstimate();renderDashboard()}},button("日期设置") {dateSettings()}))
                 val day=statementPrefs().getInt("statement_day",0);gap(dashboard,14)
-                if(day>0) {val cycle=selectedCycle(day);dashboard.addView(horizontal(link("‹") {cycleOffset--;lastFxRequest=null;refreshCreditEstimate();renderDashboard()},text(cycle.start.format(DateTimeFormatter.ofPattern("MM.dd"))+" — "+cycle.end.format(DateTimeFormatter.ofPattern("MM.dd")),14f).apply {gravity=android.view.Gravity.CENTER},link("›") {cycleOffset++;lastFxRequest=null;refreshCreditEstimate();renderDashboard()}.apply {gravity=android.view.Gravity.END}))} else dashboard.addView(link("设置账单日 →") {configureStatementDay()})
+                dashboard.addView(cycleBar())
                 gap(dashboard,12)
                 dashboard.addView(panel(0xffe8efed.toInt()).apply {addView(split(muted("外币消费"),link("ⓘ") {estimateDetails()}));addView(number("US$ "+estimateMoney(lastEstimate?.usdSubtotal),40));addView(muted("≈ CNY "+estimateMoney(lastEstimate?.cnySubtotal)+" · 参考",14f))})
                 dashboard.addView(split(plainBox().apply {addView(muted("人民币消费"));addView(number("CNY "+money(lastEstimate?.nativeCnySubtotal),27))},tag("人民币单列") {info("人民币消费","短信明确为 CNY / RMB / 人民币的消费单列，不计入外币美元合计。这里只按短信所示币种，不猜测银行最终结算币种。")}))
                 dashboard.addView(link(lastEstimate?.let {"已覆盖 ${it.covered} / ${it.foreignLines.size} 笔外币"+(if(!it.complete) " · 待补全" else "")} ?: "设置账期后查看估算") {estimateDetails()})
                 dashboard.addView(panel(Color.rgb(238,234,225)).apply {addView(muted("下次还款"));addView(split(number(due.first,30),tag(due.second) {configureRepayment()}))})
-                val pending=rows.count {it.recognizedTransaction && it.effective!!.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) && links.none {l->l.adjustmentId==it.id}}
+                val pending=rows.count {it.recognizedTransaction && it.effective!!.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) && (creditAccount==null || it.effective?.account==creditAccount) && links.none {l->l.adjustmentId==it.id}}
                 dashboard.addView(split(text("撤销 / 退货待关联",14f),tag("$pending 笔 →") {pendingAssociations()}));gap(dashboard,12);rule(dashboard)
-                dashboard.addView(split(text("本期分类",14f),link("查看 →") {val cycle=day.takeIf {it>0}?.let(::selectedCycle);navigate("stats");statsKind=AccountKind.CREDIT;statsAccount=null;from=cycle?.start;to=cycle?.end;renderDashboard()}));rule(dashboard)
-                heading("最近流水")
-                rows.filter {it.recognizedTransaction && it.effective!!.accountKind==AccountKind.CREDIT}.take(3).forEach {dashboard.addView(transactionRow(it,false))}
-                dashboard.addView(link("全部信用卡流水 →") {navigate("debit");accountKind=AccountKind.CREDIT;reload()})
+                dashboard.addView(split(text("本期分类",14f),link("查看 →") {val cycle=day.takeIf {it>0}?.let(::selectedCycle);navigate("stats");statsKind=AccountKind.CREDIT;statsAccount=creditAccount;from=cycle?.start;to=cycle?.end;renderDashboard()}));rule(dashboard)
+                heading("本期流水","查看全部") {openCreditLedger()}
+                rows.filter {it.recognizedTransaction && it.effective!!.accountKind==AccountKind.CREDIT && (creditAccount==null || it.effective?.account==creditAccount) && day>0 && statsDate(it)?.let(selectedCycle(day)::contains)==true}.take(3).forEach {dashboard.addView(transactionRow(it,false))}
+                dashboard.addView(link("查看本期流水 →") {openCreditLedger()})
             }
             "match"->renderMatch()
             "settings"->renderSettings()
@@ -380,24 +414,24 @@ class MainActivity:Activity() {
         return plainBox().apply {
             setPadding(0,dp(13),0,dp(12))
             val name=text(merchant(r),15f,true).apply {maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;setOnClickListener {detail(r.id)}}
-            val amount=text((if(incoming) "+ " else "− ")+e.money.currency+" "+money(e.money.amount),18f,true).apply {gravity=android.view.Gravity.END;setTextColor(if(incoming) teal else ink)}
-            addView(split(name,amount))
+            val amount=text((if(incoming) "+ " else "− ")+e.money.currency+" "+money(e.money.amount),20f,true).apply {gravity=android.view.Gravity.END;maxLines=1;setAutoSizeTextTypeUniformWithConfiguration(14,20,1,android.util.TypedValue.COMPLEX_UNIT_SP);setTextColor(if(incoming) teal else ink)}
+            addView(name);addView(amount,LinearLayout.LayoutParams(-1,-2))
             val metadata=plainBox().apply {addView(muted((e.date?.toString() ?: "日期待确认")+" · "+e.tail,11f))}
             val reference=muted("",12f).apply {gravity=android.view.Gravity.END}
             if(e.accountKind==AccountKind.CREDIT && e.kind!=Kind.CREDIT_FX_REPAYMENT) {
                 if(e.money.currency=="CNY") reference.text="人民币单列" else if(e.money.currency!="USD") bindReference(e,reference)
             }
             addView(split(metadata,reference))
-            val category=if(e.kind in listOf(Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)) tag(labelFor(r)+"⌄") {categoryDialog(setOf(r.id))} else muted(if(links.any {it.adjustmentId==r.id}) "已关联" else if(e.kind in listOf(Kind.CREDIT_REFUND,Kind.CREDIT_REVERSAL)) "待关联" else labelFor(r),11f)
+            val category=if(e.kind in listOf(Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)) filterControl(labelFor(r)) {categoryDialog(setOf(r.id))} else muted(if(links.any {it.adjustmentId==r.id}) "已关联" else if(e.kind in listOf(Kind.CREDIT_REFUND,Kind.CREDIT_REVERSAL)) "待关联" else labelFor(r),11f)
             if(batch && selectable && e.kind in listOf(Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)) {val check=CheckBox(this@MainActivity).apply {isChecked=r.id in selectedIds;contentDescription="选择流水 ${r.id}";setOnCheckedChangeListener {_,checked->if(checked) selectedIds.add(r.id) else selectedIds.remove(r.id);renderDashboard()}};addView(split(category,check))} else addView(category,LinearLayout.LayoutParams(-2,-2))
             gap(this,9);rule(this);setOnClickListener {detail(r.id)}
         }
     }
     private fun renderStats() {
         val available=scopeRows(statsKind);val currencies=available.map {it.effective!!.money.currency}.distinct().sorted();if(statsCurrency !in currencies && currencies.isNotEmpty()) statsCurrency=currencies.first()
-        dashboard.addView(horizontal(tag(rangeName()) {filterRangeDialog()},tag((statsAccount ?: statsKind.label)+"⌄") {statsAccounts()},tag(statsCurrency+"⌄") {LedgerSheet.Builder(this).setTitle("原币统计").setItems(currencies.toTypedArray()) {_,i->statsCurrency=currencies[i];renderDashboard()}.show()}));gap(dashboard,16)
+        dashboard.addView(filterControl(rangeName()) {filterRangeDialog()});gap(dashboard,8);dashboard.addView(horizontal(filterControl(statsAccount ?: statsKind.label) {statsAccounts()},filterControl(statsCurrency) {LedgerSheet.Builder(this).setTitle("原币统计").setItems(currencies.toTypedArray()) {_,i->statsCurrency=currencies[i];renderDashboard()}.show()}));gap(dashboard,16)
         val visible=available.filter {it.effective!!.money.currency==statsCurrency};val points=netPoints(visible);val groups=points.groupBy {it.category}.mapValues {(_,p)->p.fold(BigDecimal.ZERO){a,b->a+b.amount}}.entries.sortedByDescending {it.value}.map {it.key to it.value};val total=points.fold(BigDecimal.ZERO){a,b->a+b.amount}
-        dashboard.addView(link("消费净额 · 原币 ⓘ") {info("统计口径","借记按接收日期、信用按正文完整交易日期筛选原消费。已关联调整归原消费并只扣一次。转账与还款排除；用途未知的跨行支取不擅自视为消费，网上支付待分类仍计入。不同币种独立；参考折算请看信用卡。未来或日期不全的调整暂不扣减。")}.apply {gravity=android.view.Gravity.CENTER})
+        dashboard.addView(link("消费净额 · 原币 ⓘ") {info("统计口径","按交易日期筛选原消费；正文缺年时以短信时间推断。已关联调整归原消费并只扣一次。转账与还款排除；用途未知的跨行支取不擅自视为消费，网上支付待分类仍计入。不同币种独立；参考折算请看信用卡。未来或日期不全的调整暂不扣减。")}.apply {gravity=android.view.Gravity.CENTER})
         dashboard.addView(number((if(statsCurrency=="CNY") "¥" else statsCurrency+" ")+money(total),36).apply {gravity=android.view.Gravity.CENTER})
         dashboard.addView(SpendingChart(this,groups),LinearLayout.LayoutParams(-1,dp(156)))
         groups.forEachIndexed {i,(name,amount)->dashboard.addView(split(text("●  $name",13f).apply {val styled=android.text.SpannableString(text);styled.setSpan(android.text.style.ForegroundColorSpan(SpendingChart.colors[i%SpendingChart.colors.size]),0,1,0);text=styled;setOnClickListener {info(name,points.filter {it.category==name}.joinToString("\n"){p->val r=rows.first {it.id==p.id};"${merchant(r)} · ${money(p.amount)} $statsCurrency"})}},text(money(amount)+"    "+(if(total.signum()==0) "0" else amount.multiply(BigDecimal(100)).divide(total,1,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString())+"%",13f)))}
@@ -435,7 +469,7 @@ class MainActivity:Activity() {
     private fun renderMatch() {
         val current=rows.find {it.id==matchId} ?: run {dashboard.addView(text("请选择待关联记录"));return}
         fun source(r:StoredSms,title:String,selected:Boolean=false)=panel(if(selected) 0xffe8efea.toInt() else 0xfff0eee7.toInt()).apply {addView(muted(title,11f));addView(split(text(merchant(r),15f,true),muted(r.effective?.date?.toString() ?: "日期未知",11f)));addView(number((if(r.effective?.kind==Kind.CREDIT_PURCHASE) "− " else "+ ")+r.effective?.money.toString(),25));addView(muted("卡 ${r.effective?.tail}",11f));addView(text(r.body,12f).apply {setTextIsSelectable(true)})}
-        dashboard.addView(source(current,"本次退货 / 撤销"));heading("选择原消费",if(otherAmounts) "其他金额⌄" else "同金额⌄") {otherAmounts=!otherAmounts;matchChoice=null;renderDashboard()}
+        dashboard.addView(source(current,"本次退货 / 撤销"));heading("选择原消费",if(otherAmounts) "其他金额" else "同金额") {otherAmounts=!otherAmounts;matchChoice=null;renderDashboard()}
         val candidates=rows.filter {r->r.sim==current.sim && r.source.startsWith("demo:")==current.source.startsWith("demo:") && Accounting.validateLink(rows.map(StoredSms::entry),links,current.id,r.id)==null && (otherAmounts || r.effective!!.money.amount.compareTo(current.effective!!.money.amount)==0)}.sortedWith(compareBy<StoredSms> {it.effective!!.date?.let {d->d.year?.let {LocalDate.of(it,d.month,d.day)}} ?: LocalDate.MAX}.thenBy {it.id})
         if(matchChoice !in candidates.map {it.id}) matchChoice=candidates.firstOrNull()?.id
         candidates.forEachIndexed {i,r->dashboard.addView(source(r,(if(r.id==matchChoice) "● " else "○ ")+(if(i==0) "最早一笔" else "候选消费"),r.id==matchChoice).apply {setOnClickListener {matchChoice=r.id;renderDashboard()};contentDescription="选择消费 ${r.id}"})}
@@ -451,30 +485,25 @@ class MainActivity:Activity() {
     private fun setChoices(spinner:Spinner,values:List<String>,selection:String?=spinner.selectedItem?.toString()) {
         spinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,values)
         spinner.setSelection(values.indexOf(selection).coerceAtLeast(0))
-        spinner.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) {if(!refreshing) render()}
-            override fun onNothingSelected(parent:AdapterView<*>?) { }
-        }
     }
+
     private fun reload() {
         if(isDestroyed || isFinishing) return
         if(getSharedPreferences(if(demo) "rules-demo" else "rules",0).getBoolean("enabled",true)) db.applyRules();db.autoAssociate();rows=db.all();links=db.links();expenseLabels=db.labels();merchantRules=db.rules();refreshing=true
-        val group=rows.filter {it.recognizedTransaction && it.effective?.accountKind==accountKind}
-        setChoices(accountFilter,listOf("全部账户")+group.mapNotNull {it.effective?.account}.distinct().sorted())
-        setChoices(currencyFilter,listOf("全部币种")+group.mapNotNull {it.effective?.money?.currency}.distinct().sorted())
         refreshing=false;render();updateStatus()
     }
     private fun pending(row:StoredSms):Boolean = !row.excluded && (row.effective!=null || row.parsed.status!=ParseStatus.IGNORED) &&
         (!row.verified || row.effective==null || !row.effective.currenciesRecognized || row.category==Category.PENDING && row.effective.kind !in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) || row.effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) && links.none {it.adjustmentId==row.id})
     private fun render() {
         if(!::list.isInitialized) return
-        val account=accountFilter.selectedItem?.toString();val currency=currencyFilter.selectedItem?.toString();val savedPosition=list.firstVisiblePosition;val savedTop=list.getChildAt(0)?.top ?: 0
+        if(page=="debit" && accountKind==AccountKind.CREDIT && ledgerUsesCycle) {statementPrefs().getInt("statement_day",0).takeIf {it>0}?.let {val cycle=selectedCycle(it);from=cycle.start;to=cycle.end}}
+        val account=selectedAccount;val currency=selectedCurrency;val savedPosition=list.firstVisiblePosition;val savedTop=list.getChildAt(0)?.top ?: 0
         shown=rows.filter { r ->
-            val day=Instant.ofEpochMilli(r.received).atZone(zone).toLocalDate()
+            val day=statsDate(r)
             r.recognizedTransaction && r.effective?.accountKind==accountKind &&
             (account==null || account=="全部账户" || r.effective.account==account) &&
             (currency==null || currency=="全部币种" || r.effective?.money?.currency==currency) &&
-            (from==null || day>=from) && (to==null || day<=to) && (query.isBlank() || (merchant(r)+r.body+r.effective?.money.toString()).contains(query,true))
+            (from==null || day!=null && day>=from) && (to==null || day!=null && day<=to) && (selectedCategory==null || labelFor(r)==selectedCategory) && (query.isBlank() || (merchant(r)+r.body+r.effective?.money.toString()).contains(query,true))
         }
         if(accountKind==AccountKind.CREDIT) shown=shown.sortedBy {if(it.effective!!.money.currency=="CNY") 0 else 1}
         rangeButton.text=getString(R.string.received_range,from?.toString() ?: "不限",to?.toString() ?: "不限")
@@ -539,7 +568,7 @@ class MainActivity:Activity() {
         if(demo) {toast("先切回手机账本再导入");return}
         if(!SmsImport.hasRead(this)) {requestSms();return}
         var start=LocalDate.now().minusMonths(3);var end=LocalDate.now()
-        val box=column();box.addView(text("导入手机现存的中国银行候选短信。接收日期范围含首尾；原文年份缺失时保持未知。再次导入不会重复记账。",14f))
+        val box=column();box.addView(text("导入手机现存的中国银行候选短信。接收日期范围含首尾；原文年份缺失时按该条短信时间推断。再次导入不会重复记账。",14f))
         val a=button("起始：$start") {};val b=button("结束：$end") {}
         a.setOnClickListener {chooseDate(start) {start=it;a.text=getString(R.string.start_date,start.toString())}}
         b.setOnClickListener {chooseDate(end) {end=it;b.text=getString(R.string.end_date,end.toString())}}
@@ -562,17 +591,17 @@ class MainActivity:Activity() {
     }
     private fun filterRangeDialog() {
         var a=from ?: LocalDate.now().minusMonths(1);var b=to ?: LocalDate.now()
-        val box=column();box.addView(text("以短信接收日期筛选；正文交易日期另列，缺少年份不推算。"))
+        val box=column();box.addView(text("按交易日期筛选；缺失年份依据该条短信时间推断。"))
         val first=button("起始：$a") {};val last=button("结束：$b") {}
         first.setOnClickListener {chooseDate(a) {a=it;first.text=getString(R.string.start_date,a.toString())}}
         last.setOnClickListener {chooseDate(b) {b=it;last.text=getString(R.string.end_date,b.toString())}}
         box.addView(first);box.addView(last)
-        LedgerSheet.Builder(this).setTitle("列表接收日期范围").setView(box).setPositiveButton("应用") {_,_->if(a<=b) {from=a;to=b;render()} else toast("日期范围无效")}.setNeutralButton("全部日期") {_,_->from=null;to=null;render()}.setNegativeButton("取消",null).show()
+        LedgerSheet.Builder(this).setTitle("交易日期范围").setView(box).setPositiveButton("应用") {_,_->if(a<=b) {from=a;to=b;ledgerUsesCycle=false;filtersChanged()} else toast("日期范围无效")}.setNeutralButton("全部日期") {_,_->from=null;to=null;ledgerUsesCycle=false;filtersChanged()}.setNegativeButton("取消",null).show()
     }
     private fun menu() {
         val options=arrayOf(if(demo) "切回手机账本" else "打开合成演示","短信权限与设置","重新解析（保留人工修正）",if(SmsImport.enabled(this)) "暂停自动扫描" else "恢复自动扫描","补读历史范围（可选）","保留的原始记录","刷新公开参考汇率","使用说明")
         LedgerSheet.Builder(this).setTitle("账本工具").setItems(options) {_,which->when(which) {
-            0->{fxEpoch.incrementAndGet();fxTask?.cancel(true);lastEstimate=null;demo=!demo;backStack.clear();tabStates.clear();rowReferences.clear();db.close();db=LedgerDb(this,if(demo) "demo.db" else "ledger.db");from=null;to=null;cycleOffset=0;lastFxRequest=null;buildUi();reload();if(demo) loadDemo() else {reload();observeSms();requestAutomaticScan()}}
+            0->{fxEpoch.incrementAndGet();fxTask?.cancel(true);lastEstimate=null;demo=!demo;backStack.clear();tabStates.clear();rowReferences.clear();db.close();db=LedgerDb(this,if(demo) "demo.db" else "ledger.db");from=null;to=null;selectedAccount=null;selectedCurrency=null;selectedCategory=null;creditAccount=null;ledgerUsesCycle=false;cycleOffset=0;lastFxRequest=null;buildUi();reload();if(demo) loadDemo() else {reload();observeSms();requestAutomaticScan()}}
             1->if(SmsImport.hasRead(this)) startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName"))) else requestSms()
             2->work("重新解析",{db.reparse();Unit}) {"已重新解析；人工修正保留，已关联记录冻结"}
             3->if(demo) toast("请先切回手机账本") else if(SmsImport.enabled(this)) {SmsImport.pauseAutomatic(this);mainHandler.removeCallbacks(autoScan);updateStatus("自动扫描已暂停，已有交易保留")} else if(!SmsImport.hasRead(this)) requestSms() else {SmsImport.enableAutomatic(this);observeSms();requestAutomaticScan()}
@@ -592,7 +621,7 @@ class MainActivity:Activity() {
         val box=column();box.addView(text("账单日当天归本期 · 短月取月底"))
         val day=NumberPicker(this).apply {minValue=1;maxValue=31;value=statementPrefs().getInt("statement_day",1)}
         box.addView(day)
-        LedgerSheet.Builder(this).setTitle("配置信用卡账单日").setView(box).setPositiveButton("保存") {_,_->statementPrefs().edit().putInt("statement_day",day.value).apply();cycleOffset=0;lastFxRequest=null;refreshCreditEstimate();renderDashboard()}.setNegativeButton("取消",null).show()
+        LedgerSheet.Builder(this).setTitle("配置信用卡账单日").setView(box).setPositiveButton("保存") {_,_->statementPrefs().edit().putInt("statement_day",day.value).apply();cycleOffset=0;lastFxRequest=null;refreshCreditEstimate();render()}.setNegativeButton("取消",null).show()
     }
     private fun refreshCreditEstimate(force:Boolean=false) {
         if(!::billingText.isInitialized || page !in listOf("home","credit") || !foreground) return
@@ -600,7 +629,7 @@ class MainActivity:Activity() {
         billingDayButton.text=if(day==0) "设置账单日" else "账单日 $day 日"
         if(day==0) {fxEpoch.incrementAndGet();fxTask?.cancel(true);lastEstimate=null;billingText.text=getString(R.string.bill_unconfigured);return}
         val today=LocalDate.now();val cycle=selectedCycle(day)
-        val account:String?=null
+        val account:String?=creditAccount
         val input=rows.filter {it.recognizedTransaction && it.effective?.accountKind==AccountKind.CREDIT && (account==null || account=="全部账户" || it.effective.account==account)}.map(StoredSms::entry)
         val token="$day/$cycle/$account/${input.hashCode()}/${links.hashCode()}/${System.currentTimeMillis()/3600000}"
         if(token==lastFxRequest && !force) return
@@ -667,7 +696,7 @@ class MainActivity:Activity() {
             box.addView(number(e.money.currency+" "+money(e.money.amount),32))
             box.addView(text(merchant(r),18f,true))
             box.addView(muted("${e.date ?: "日期待确认"} · ${e.accountKind.label} ${e.tail}",12f))
-            gap(box,10);box.addView(split(muted("分类"),tag(labelFor(r)+"⌄") {categoryDialog(setOf(r.id))}))
+            gap(box,10);box.addView(split(muted("分类"),filterControl(labelFor(r)) {categoryDialog(setOf(r.id))}))
             if(e.accountKind==AccountKind.CREDIT && e.money.currency !in listOf("USD","CNY") && e.kind!=Kind.CREDIT_FX_REPAYMENT) box.addView(muted("").also {bindReference(e,it)})
             val outgoing=links.find {it.adjustmentId==id};outgoing?.let {box.addView(muted("已关联原消费 #${it.purchaseId}"))}
             if(r.excluded) box.addView(muted("已排除统计"))
@@ -687,14 +716,14 @@ class MainActivity:Activity() {
         }
         links.filter {it.purchaseId==id}.forEach {l->action("解除调整 #${l.adjustmentId}") {safe {db.unlink(l.adjustmentId)}}}
         action(if(r.excluded) "恢复统计" else "排除统计（保留原文）") {safe {db.toggleExcluded(id)}}
-        action("来源信息") {info("来源信息","#${r.id} · ${e?.kind?.label ?: r.parsed.status.label}\n发送方 ${r.sender} · SIM ${r.sim}\n接收 ${received(r)}\n来源 ${r.source}\n解析器 v${r.parserVersion} · ${r.parsed.status.label}\n${r.parsed.reason}\n"+(if(r.verified) "来源已确认" else "来源未确认，不计入汇总")+(if(r.manual) "\n人工修正优先，原解析保留" else "")+"\n分类口径 ${r.category.label}\n清算 / 入账状态未知")}
+        action("来源信息") {info("来源信息","#${r.id} · ${e?.kind?.label ?: r.parsed.status.label}\n发送方 ${r.sender} · SIM ${r.sim}\n接收 ${received(r)}\n来源 ${r.source}\n解析器 v${r.parserVersion} · ${r.parsed.status.label}\n${r.parsed.reason}\n"+(if(r.verified) "来源已确认" else "来源未确认，不计入汇总")+(if(r.manual) "\n人工修正优先，原解析保留" else "")+(if(r.dateInferred) "\n年份按该条短信时间（北京时间）推断" else "")+"\n分类口径 ${r.category.label}\n清算 / 入账状态未知")}
         action("查看修正与关联历史") {val history=db.history(id);LedgerSheet.Builder(this).setTitle("操作历史 #$id").setMessage(if(history.isEmpty()) "尚无人工操作" else history.joinToString("\n\n")).setPositiveButton("关闭",null).show()}
         dialog.show()
     }
     private fun linkDialog(row:StoredSms,returnToDetail:Boolean=false) {LedgerSheet.closeAll();matchId=row.id;matchChoice=null;otherAmounts=false;navigate("match");if(returnToDetail) backStack.addLast(backStack.removeLast().copy(detailId=row.id))}
     private fun edit(row:StoredSms) {
         val old=row.effective;val box=column()
-        box.addView(text("所有修正保留原文和操作历史。日期留空表示未知；不从接收时间补年。已有关联请先解除。"))
+        box.addView(text("所有修正保留原文和操作历史。人工日期留空表示未知；不自动补年。已有关联请先解除。"))
         fun input(label:String,value:String=""):EditText {box.addView(text(label,12f));return EditText(this).apply {setText(value);isSingleLine=true;box.addView(this)} }
         val kind=LedgerSpinner(this).apply {adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,Kind.entries.map {it.label});setSelection(old?.kind?.ordinal ?: 0)};box.addView(text("事件类型",12f));box.addView(kind)
         val tail=input("卡尾号（4位）",old?.tail.orEmpty())

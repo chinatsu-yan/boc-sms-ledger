@@ -11,7 +11,7 @@ data class MerchantRule(val merchant:String,val alias:String,val name:String)
 data class StoredSms(
     val id: Long, val source: String, val sender: String, val body: String, val received: Long, val sim: String,
     val parsed: ParseResult, val effective: Event?, val category: Category, val excluded: Boolean,
-    val verified: Boolean, val manual: Boolean, val parserVersion: Int
+    val verified: Boolean, val manual: Boolean, val parserVersion: Int, val dateInferred:Boolean=false
 ) {
     fun entry() = Entry(id,effective,category,excluded,verified)
     val recognizedTransaction get() = !excluded && verified && effective?.currenciesRecognized==true && (parsed.status==ParseStatus.PARSED || manual)
@@ -82,8 +82,11 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
             fun optional(name:String)=if(c.isNull(c.getColumnIndexOrThrow(name))) null else s(name)
             while(c.moveToNext()) {
                 val parsed=ParseResult(ParseStatus.valueOf(s("status")),optional("event")?.let(EventJson::decode),s("reason"))
-                val event=optional("manual_event")?.let(EventJson::decode) ?: parsed.event
-                add(StoredSms(n("id"),s("source"),s("sender"),s("body"),n("received"),s("sim"),parsed,event,optional("category")?.let(Category::valueOf) ?: event?.defaultCategory ?: Category.PENDING,n("excluded")==1L,n("verified")==1L,n("manual")==1L,n("parser_version").toInt()))
+                val manualEvent=optional("manual_event")?.let(EventJson::decode)
+                val inferred=if(manualEvent==null) SmsDate.resolve(parsed.event?.date,n("received")) else manualEvent.date
+                val event=manualEvent ?: parsed.event?.copy(date=inferred)
+                val dateInferred=manualEvent==null && parsed.event?.date?.year==null && inferred?.year!=null
+                add(StoredSms(n("id"),s("source"),s("sender"),s("body"),n("received"),s("sim"),parsed,event,optional("category")?.let(Category::valueOf) ?: event?.defaultCategory ?: Category.PENDING,n("excluded")==1L,n("verified")==1L,n("manual")==1L,n("parser_version").toInt(),dateInferred))
             }
         }
     }
