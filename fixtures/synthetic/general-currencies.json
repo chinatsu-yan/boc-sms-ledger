@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "fixture_kind": "synthetic_currency_generalization",
+  "description": "全部为合成字段；在现有中国银行模板内验证标准币种、原金额、边界和未确认草稿，不代表全银行或全格式覆盖。",
+  "cases": [
+    {
+      "id": "usd_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费USD1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "USD",
+        "raw_currency": "USD",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "eur_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费EUR1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "EUR",
+        "raw_currency": "EUR",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "gbp_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费GBP1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "GBP",
+        "raw_currency": "GBP",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "aud_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费AUD1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "AUD",
+        "raw_currency": "AUD",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "cad_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费CAD1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "CAD",
+        "raw_currency": "CAD",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "chf_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费CHF1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "CHF",
+        "raw_currency": "CHF",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "hkd_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费HKD1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "HKD",
+        "raw_currency": "HKD",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "twd_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费TWD1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "TWD",
+        "raw_currency": "TWD",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "sgd_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费SGD1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "SGD",
+        "raw_currency": "SGD",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "cny_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOEUR消费CNY1,234.50元。【中国银行】",
+      "expected": {
+        "currency": "CNY",
+        "raw_currency": "CNY",
+        "amount": "1234.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOEUR"
+      }
+    },
+    {
+      "id": "rmb_alias",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费RMB12.50元。【中国银行】",
+      "expected": {
+        "currency": "CNY",
+        "raw_currency": "RMB",
+        "amount": "12.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "renminbi_alias",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费人民币12.50元。【中国银行】",
+      "expected": {
+        "currency": "CNY",
+        "raw_currency": "人民币",
+        "amount": "12.50",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "jpy_integer",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费JPY12,345元。【中国银行】",
+      "expected": {
+        "currency": "JPY",
+        "raw_currency": "JPY",
+        "amount": "12345",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "jpy_zero_padding",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费JPY12,345.00元。【中国银行】",
+      "expected": {
+        "currency": "JPY",
+        "raw_currency": "JPY",
+        "amount": "12345.00",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "kwd_three_decimals",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费KWD12.345元。【中国银行】",
+      "expected": {
+        "currency": "KWD",
+        "raw_currency": "KWD",
+        "amount": "12.345",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "bhd_grouped_three_decimals",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费BHD1,234.567元。【中国银行】",
+      "expected": {
+        "currency": "BHD",
+        "raw_currency": "BHD",
+        "amount": "1234.567",
+        "kind": "CREDIT_PURCHASE",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "eur_refund",
+      "text": "您的信用卡5555于2024年02月20日成功退货EUR23.45元【中国银行】",
+      "expected": {
+        "currency": "EUR",
+        "raw_currency": "EUR",
+        "amount": "23.45",
+        "kind": "CREDIT_REFUND"
+      }
+    },
+    {
+      "id": "gbp_reversal",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD撤销GBP23.45元。【中国银行】",
+      "expected": {
+        "currency": "GBP",
+        "raw_currency": "GBP",
+        "amount": "23.45",
+        "kind": "CREDIT_REVERSAL",
+        "merchant": "DEMOUSD"
+      }
+    },
+    {
+      "id": "kwd_fx_repayment",
+      "text": "您的信用卡5555于2024年02月20日购汇还款，购汇转出卡号6666，购汇转入KWD12.345，购汇转出RMB246.90，汇率0.050000【中国银行】",
+      "expected": {
+        "currency": "KWD",
+        "raw_currency": "KWD",
+        "amount": "12.345",
+        "kind": "CREDIT_FX_REPAYMENT",
+        "source_currency": "CNY",
+        "source_amount": "246.90"
+      }
+    }
+  ],
+  "boundary_cases": [
+    {
+      "id": "invalid_grouping",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费EUR1,23.45元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "excess_two_decimals",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费EUR1.234元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "excess_three_decimals",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费KWD1.2345元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "jpy_fraction_not_rounded",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费JPY12.50元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "missing_currency_merchant_suffix",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费12.50元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "four_letter_code",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费USDX12.50元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "lowercase_not_inferred",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费eur12.50元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": false
+    },
+    {
+      "id": "zzz_unconfirmed",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费ZZZ12.3456元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": true,
+      "currency": "ZZZ",
+      "amount": "12.3456"
+    },
+    {
+      "id": "xxx_unconfirmed",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费XXX12.3456元。【中国银行】",
+      "expected_status": "needs_review",
+      "draft": true,
+      "currency": "XXX",
+      "amount": "12.3456"
+    },
+    {
+      "id": "failed_eur_not_purchase",
+      "text": "您的信用卡5555于2024年02月20日，在DEMOUSD消费EUR12.50元失败。【中国银行】",
+      "expected_status": "ignored",
+      "draft": false
+    }
+  ]
+}

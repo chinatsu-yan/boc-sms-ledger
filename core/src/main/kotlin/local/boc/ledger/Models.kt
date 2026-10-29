@@ -8,7 +8,8 @@ enum class Kind(val label: String) {
     CREDIT_PURCHASE("信用卡消费"), CREDIT_REVERSAL("信用卡撤销"), CREDIT_REFUND("信用卡退货"), CREDIT_FX_REPAYMENT("购汇还款")
 }
 enum class Category(val label: String) { PENDING("用途待确认"), SPENDING("消费"), INCOME("收入"), TRANSFER("本人调拨"), REPAYMENT("还款本金"), OTHER("其他非收支") }
-data class Money(val currency: String, val amount: BigDecimal, val rawCurrency: String = currency) {
+data class Money(val currency: String, val amount: BigDecimal, val rawCurrency: String = currency,
+    val currencyRecognized: Boolean = CurrencySupport.minorUnits(currency) != null) {
     init { require(currency.matches(Regex("[A-Z]{3}"))); require(amount >= BigDecimal.ZERO) }
     override fun toString() = "$currency ${amount.toPlainString()}"
 }
@@ -24,7 +25,9 @@ data class Event(
 ) {
     init { require(tail.matches(Regex("[0-9]{4}"))); require(money.amount > BigDecimal.ZERO); require(sourceMoney == null || sourceMoney.amount > BigDecimal.ZERO) }
     val account: String get() = (if (kind.name.startsWith("DEBIT")) "借记卡" else "信用卡") + " · " + tail
-    val defaultCategory get() = when(kind) { Kind.CREDIT_PURCHASE -> Category.SPENDING; Kind.CREDIT_FX_REPAYMENT -> Category.REPAYMENT; else -> Category.PENDING }
+    val currenciesRecognized get() = money.currencyRecognized && (sourceMoney?.currencyRecognized ?: true)
+    val unconfirmedCurrencyCodes get() = listOfNotNull(money,sourceMoney).filterNot { it.currencyRecognized }.map { it.currency }.distinct()
+    val defaultCategory get() = if(!currenciesRecognized) Category.PENDING else when(kind) { Kind.CREDIT_PURCHASE -> Category.SPENDING; Kind.CREDIT_FX_REPAYMENT -> Category.REPAYMENT; else -> Category.PENDING }
 }
 enum class ParseStatus(val label: String) { PARSED("已识别"), NEEDS_REVIEW("未识别待确认"), IGNORED("非交易") }
 data class ParseResult(val status: ParseStatus, val event: Event? = null, val reason: String = "")

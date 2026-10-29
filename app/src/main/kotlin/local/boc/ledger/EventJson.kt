@@ -4,8 +4,8 @@ import org.json.JSONObject
 import java.math.BigDecimal
 
 object EventJson {
-    private fun money(m: Money): JSONObject = JSONObject().put("currency",m.currency).put("amount",m.amount.toPlainString()).put("raw",m.rawCurrency)
-    private fun money(o: JSONObject) = Money(o.getString("currency"),BigDecimal(o.getString("amount")),o.getString("raw"))
+    private fun money(m: Money): JSONObject = JSONObject().put("currency",m.currency).put("amount",m.amount.toPlainString()).put("raw",m.rawCurrency).put("currencyRecognized",m.currencyRecognized)
+    private fun money(o: JSONObject) = Money(o.getString("currency"),BigDecimal(o.getString("amount")),o.getString("raw"),if(o.has("currencyRecognized")) o.getBoolean("currencyRecognized") else CurrencySupport.minorUnits(o.getString("currency"))!=null)
     fun encode(e: Event): String = JSONObject().apply {
         put("kind",e.kind.name); put("tail",e.tail); put("money",money(e.money))
         e.date?.let { put("date",JSONObject().put("year",it.year ?: JSONObject.NULL).put("month",it.month).put("day",it.day)) }

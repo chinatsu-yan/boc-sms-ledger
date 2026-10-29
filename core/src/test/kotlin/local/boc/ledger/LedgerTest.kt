@@ -113,7 +113,12 @@ class LedgerTest {
         variants["boundary_cases"].asJsonArray.forEach { item ->
             val c=item.asJsonObject;val result=BocParser.parse(c["text"].asString)
             assertEquals(c["id"].asString,ParseStatus.NEEDS_REVIEW,result.status)
-            assertNull(result.event)
+            if(c["id"].asString=="unknown_currency_stays_review") {
+                assertNotNull(result.event)
+                assertEquals("ZZZ",result.event!!.money.currency)
+                assertFalse(result.event.currenciesRecognized)
+                assertEquals(Category.PENDING,result.event.defaultCategory)
+            } else assertNull(result.event)
         }
     }
     @Test fun newCurrenciesUseExistingReversalAndRefundTemplates() {

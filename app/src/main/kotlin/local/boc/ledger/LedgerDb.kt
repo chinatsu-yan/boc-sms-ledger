@@ -12,7 +12,7 @@ data class StoredSms(
     val verified: Boolean, val manual: Boolean, val parserVersion: Int
 ) {
     fun entry() = Entry(id,effective,category,excluded,verified)
-    val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
+    val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || !effective.currenciesRecognized || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
 }
 
 class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,1), java.io.Closeable {
@@ -55,6 +55,7 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
         val row=all().first { it.id==id }
         require(links().none { it.adjustmentId==id || it.purchaseId==id }) { "请先解除与本条有关的关联" }
         val e=event ?: row.effective ?: error("请先补全事件字段")
+        require(e.currenciesRecognized) { "本机货币资料未能确认币种或单位规则，请核对代码；原记录仍保留待确认" }
         require(category in allowedCategories(e.kind)) { "此事件类型不支持该分类" }
         writableDatabase.update("sms",ContentValues().apply { put("category",category.name); put("manual",1); if(event!=null) put("manual_event",EventJson.encode(event)) },"id=?",arrayOf(id.toString()))
         audit(id,"人工修正", "${row.category.name}: ${row.effective?.let(EventJson::encode)}","${category.name}: ${EventJson.encode(e)}")
