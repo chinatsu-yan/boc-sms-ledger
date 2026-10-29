@@ -91,6 +91,15 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
         writableDatabase.delete("links","adjustment=?",arrayOf(adjustment.toString()))
         audit(adjustment,"解除关联","消费 #${old.purchaseId}","无")
     }
+    fun autoAssociate() = transaction {
+        val rows=all()
+        val undone=readableDatabase.rawQuery("SELECT DISTINCT sms_id FROM audit WHERE action=?",arrayOf("解除关联")).use {c->buildSet {while(c.moveToNext()) add(c.getLong(0))}}
+        val blocked=undone+rows.filter {it.manual || !it.recognizedTransaction}.map {it.id}
+        for(link in rows.groupBy {it.source.startsWith("demo:") to it.sim}.values.flatMap {group->AutoAssociation.propose(group.map(StoredSms::entry),links(),blocked)}) {
+            writableDatabase.insertOrThrow("links",null,ContentValues().apply {put("adjustment",link.adjustmentId);put("purchase",link.purchaseId)})
+            audit(link.adjustmentId,"自动关联：同账户币种、商户、30天内唯一候选","无","消费 #${link.purchaseId}")
+        }
+    }
     fun reparse() = transaction {
         val frozen = links().flatMap { listOf(it.adjustmentId,it.purchaseId) }.toSet()
         for(row in all()) {

@@ -48,6 +48,7 @@ object SmsImport {
                     if(candidate(sender,body) && db.ingest(c.getString(0),sender,body,c.getLong(3),c.getString(4).orEmpty())) added++
                 }
             } ?: error("短信提供方暂不可用，请稍后重试")
+            db.autoAssociate()
         }
         return added
     }
