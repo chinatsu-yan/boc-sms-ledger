@@ -1,0 +1,54 @@
+{
+  "screens": {
+    "home": {
+      "width": 390,
+      "overflow": false,
+      "contentHeight": 666,
+      "viewportHeight": 661
+    },
+    "ledger": {
+      "width": 390,
+      "overflow": false,
+      "contentHeight": 718,
+      "viewportHeight": 661
+    },
+    "stats": {
+      "width": 390,
+      "overflow": false,
+      "contentHeight": 661,
+      "viewportHeight": 661
+    },
+    "credit": {
+      "width": 390,
+      "overflow": false,
+      "contentHeight": 694,
+      "viewportHeight": 661
+    },
+    "match": {
+      "width": 390,
+      "overflow": false,
+      "contentHeight": 661,
+      "viewportHeight": 661
+    },
+    "settings": {
+      "width": 390,
+      "overflow": false,
+      "contentHeight": 661,
+      "viewportHeight": 661
+    }
+  },
+  "browser_errors": [],
+  "tests": [
+    "classification dialog",
+    "batch selection state",
+    "link and unlink state",
+    "information detail",
+    "320/390/736 responsive navigation and no horizontal overflow"
+  ],
+  "chart_totals": {
+    "categories": 2400,
+    "weeks": 2400,
+    "credit_net_usd": 120.0,
+    "reference_cny": 864.0
+  }
+}
