@@ -39,7 +39,17 @@ adb -s emulator-5556 shell am instrument -w -r local.boc.ledger.test/android.tes
 
 初次最低版本测试实际发现 SQLiteOpenHelper 在 API 26 不实现 compileSdk 35 暗示的 AutoCloseable 接口，现由 LedgerDb 显式实现 java.io.Closeable 修复；上述 5 项为修复后的完整重跑。也已人工查看 API 26 首屏，权限未授予时按钮、筛选和提示可见，无启动崩溃。
 
-Android 15 / API 35 模拟器结果待最终执行完成后记录。
+Android 15 / API 35 Google APIs x86_64 模拟器：
+
+```sh
+adb -s emulator-5554 shell am instrument -w -r -e class local.boc.ledger.DeviceSmokeTest local.boc.ledger.test/android.test.InstrumentationTestRunner
+```
+
+结果：`OK (4 tests)`，0 失败/错误，14.548 秒，四项数据测试与上述第 2–5 项一致。
+
+该模拟器首次启动约 594 秒，测试期间云环境曾触及 16 GiB 内存上限；首轮完整 instrumentation 在应用完成启动前被系统以 reason=6 ANR 结束。释放已完成的 API 26 模拟器和 Gradle 守护进程后，按类运行数据测试通过。单独的界面检查随后受到系统自身 “System UI isn't responding” 弹窗阻塞，没有完成通过记录，现已停止该次模拟器检查。**不声称 API 35 界面验收通过**。内部截图确认应用首屏已绘制，前台被系统无响应弹窗遮挡；截图仅用于诊断，不作为用户交付。
+
+这不影响已完成的构建、JVM 测试、API 26 五项或 API 35 四项数据测试，但 API 35 的完整交互仍需在稳定模拟器或真机复核。
 
 ## 安装包
 
