@@ -12,6 +12,7 @@ data class StoredSms(
     val verified: Boolean, val manual: Boolean, val parserVersion: Int
 ) {
     fun entry() = Entry(id,effective,category,excluded,verified)
+    val recognizedTransaction get() = !excluded && verified && effective?.currenciesRecognized==true && (parsed.status==ParseStatus.PARSED || manual)
     val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || !effective.currenciesRecognized || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
 }
 

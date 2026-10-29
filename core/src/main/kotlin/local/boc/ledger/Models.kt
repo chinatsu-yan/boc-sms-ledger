@@ -7,6 +7,7 @@ enum class Kind(val label: String) {
     DEBIT_PAYMENT("借记卡支付"), DEBIT_TRANSFER_IN("借记卡转入"), DEBIT_TRANSFER_OUT("借记卡转出"),
     CREDIT_PURCHASE("信用卡消费"), CREDIT_REVERSAL("信用卡撤销"), CREDIT_REFUND("信用卡退货"), CREDIT_FX_REPAYMENT("购汇还款")
 }
+enum class AccountKind(val label: String) { DEBIT("借记卡"), CREDIT("信用卡") }
 enum class Category(val label: String) { PENDING("用途待确认"), SPENDING("消费"), INCOME("收入"), TRANSFER("本人调拨"), REPAYMENT("还款本金"), OTHER("其他非收支") }
 data class Money(val currency: String, val amount: BigDecimal, val rawCurrency: String = currency,
     val currencyRecognized: Boolean = CurrencySupport.minorUnits(currency) != null) {
@@ -24,7 +25,8 @@ data class Event(
     val rateDirection: String? = null
 ) {
     init { require(tail.matches(Regex("[0-9]{4}"))); require(money.amount > BigDecimal.ZERO); require(sourceMoney == null || sourceMoney.amount > BigDecimal.ZERO) }
-    val account: String get() = (if (kind.name.startsWith("DEBIT")) "借记卡" else "信用卡") + " · " + tail
+    val accountKind get() = when(kind) { Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_IN,Kind.DEBIT_TRANSFER_OUT -> AccountKind.DEBIT; Kind.CREDIT_PURCHASE,Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND,Kind.CREDIT_FX_REPAYMENT -> AccountKind.CREDIT }
+    val account: String get() = accountKind.label + " · " + tail
     val currenciesRecognized get() = money.currencyRecognized && (sourceMoney?.currencyRecognized ?: true)
     val unconfirmedCurrencyCodes get() = listOfNotNull(money,sourceMoney).filterNot { it.currencyRecognized }.map { it.currency }.distinct()
     val defaultCategory get() = if(!currenciesRecognized) Category.PENDING else when(kind) { Kind.CREDIT_PURCHASE -> Category.SPENDING; Kind.CREDIT_FX_REPAYMENT -> Category.REPAYMENT; else -> Category.PENDING }

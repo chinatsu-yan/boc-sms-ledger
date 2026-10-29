@@ -2,4 +2,7 @@
     <string name="received_range">接收时间：%1$s 至 %2$s</string>
     <string name="start_date">起始：%1$s</string>
     <string name="end_date">结束：%1$s</string>
+    <string name="bill_unconfigured">账期尚未配置，点击设置账单日后显示 USD / CNY 参考估算。</string>
+    <string name="bill_loading">账期 %1$s 至 %2$s（含首尾）\n正在取得参考估算，账本可继续使用…</string>
+    <string name="bill_failed">账期 %1$s 至 %2$s\n参考估算暂不可用；交易记录正常保留。</string>
 </resources>

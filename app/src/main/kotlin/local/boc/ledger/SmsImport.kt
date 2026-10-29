@@ -17,6 +17,25 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 object SmsImport {
     fun hasRead(context:Context)=context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED
+    fun enabled(context:Context)=context.getSharedPreferences("import",Context.MODE_PRIVATE).getBoolean("enabled",false)
+    fun enableAutomatic(context:Context) {
+        val prefs=context.getSharedPreferences("import",Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putBoolean("enabled",true)
+            if(!prefs.contains("start")) putLong("start",0L)
+            if(!prefs.contains("watermark")) putLong("watermark",prefs.getLong("start",0L))
+        }.apply()
+    }
+    fun prepareAutomatic(context:Context):Boolean {
+        if(!hasRead(context)) return false
+        val prefs=context.getSharedPreferences("import",Context.MODE_PRIVATE)
+        if(!prefs.contains("enabled")) enableAutomatic(context)
+        return enabled(context)
+    }
+    fun pauseAutomatic(context:Context) {
+        context.getSharedPreferences("import",Context.MODE_PRIVATE).edit().putBoolean("enabled",false).apply()
+        context.getSystemService(JobScheduler::class.java).cancel(41)
+    }
     fun candidate(sender:String,body:String)=sender=="95566" || body.contains("【中国银行】")
     fun scan(context:Context, from:Long, until:Long, cancelled:AtomicBoolean=AtomicBoolean(false)):Int {
         if(!hasRead(context)) throw SecurityException("需要短信读取权限")
