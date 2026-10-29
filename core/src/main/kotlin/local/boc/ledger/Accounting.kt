@@ -9,6 +9,9 @@ object Accounting {
         if(!a.currenciesRecognized || !p.currenciesRecognized) return "币种待确认，暂不能关联"
         if(a.kind !in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND) || p.kind!=Kind.CREDIT_PURCHASE) return "仅支持撤销/退货关联信用卡消费"
         if(a.tail!=p.tail || a.money.currency!=p.money.currency) return "账户或币种不一致"
+        val ad=a.date?.let {d->d.year?.let {java.time.LocalDate.of(it,d.month,d.day)}}
+        val pd=p.date?.let {d->d.year?.let {java.time.LocalDate.of(it,d.month,d.day)}}
+        if(ad!=null && pd!=null && pd>ad) return "消费日期晚于调整日期"
         if(links.any { it.adjustmentId==adjustmentId }) return "此事件已关联，请先解除"
         val used=links.filter { it.purchaseId==purchaseId }.fold(BigDecimal.ZERO) { sum,l -> sum + (entries.find { it.id==l.adjustmentId }?.takeIf { !it.excluded && it.senderVerified }?.event?.money?.amount ?: BigDecimal.ZERO) }
         if(used + a.money.amount > p.money.amount) return "累计撤销/退货超过原消费"

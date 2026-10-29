@@ -1,7 +1,6 @@
 package local.boc.ledger
 
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 
 object AutoAssociation {
     private fun Event.fullDate()=date?.let {d->d.year?.let {LocalDate.of(it,d.month,d.day)}}
@@ -19,12 +18,10 @@ object AutoAssociation {
             val candidates=purchases.filter {p->
                 val e=p.event!!;val pd=e.fullDate()
                 p.id !in blocked && e.tail==a.tail && e.money.currency==a.money.currency && e.merchant?.trim()==merchant &&
-                    pd!=null && ChronoUnit.DAYS.between(pd,date) in 0..30 && a.money.amount<=e.money.amount
+                    pd!=null && pd<=date && a.money.amount.compareTo(e.money.amount)==0
             }
-            // Do not make an ambiguous match appear unique by subtracting other adjustments.
-            if(candidates.size!=1) continue
-            val purchase=candidates.single()
-            if(Accounting.validateLink(valid,links,row.id,purchase.id)!=null) continue
+            val purchase=candidates.sortedWith(compareBy<Entry> {it.event!!.fullDate()}.thenBy {it.id})
+                .firstOrNull {Accounting.validateLink(valid,links,row.id,it.id)==null} ?: continue
             val link=Link(row.id,purchase.id);links+=link;proposed+=link
         }
         return proposed

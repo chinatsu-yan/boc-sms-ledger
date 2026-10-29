@@ -31,25 +31,25 @@ class FeedbackTest {
         assertEquals(LocalDate.parse("2024-01-31"),RepaymentDate.upcomingCycle(LocalDate.parse("2024-02-29"),31,1,31).end)
         assertEquals(LocalDate.parse("2024-02-29"),RepaymentDate.upcomingCycle(LocalDate.parse("2024-03-01"),31,1,31).end)
     }
-    @Test fun uniqueFullReversalAndPartialRefundCanMatch() {
+    @Test fun fullReversalMatchesButPartialRefundIsManual() {
         val purchase=row(10,Kind.CREDIT_PURCHASE)
         assertEquals(listOf(Link(1,10)),AutoAssociation.propose(listOf(row(1,Kind.CREDIT_REVERSAL),purchase),emptyList()))
-        assertEquals(listOf(Link(2,10)),AutoAssociation.propose(listOf(purchase,row(2,Kind.CREDIT_REFUND,"5.00",date="2026-06-03")),emptyList()))
+        assertTrue(AutoAssociation.propose(listOf(purchase,row(2,Kind.CREDIT_REFUND,"5.00",date="2026-06-03")),emptyList()).isEmpty())
     }
-    @Test fun missingMerchantOrAmbiguousAmountNeverAutoMatches() {
+    @Test fun missingMerchantIsManualAndDuplicateMatchesEarliest() {
         val purchase=row(10,Kind.CREDIT_PURCHASE)
         assertTrue(AutoAssociation.propose(listOf(purchase,row(2,Kind.CREDIT_REFUND,merchant=null)),emptyList()).isEmpty())
-        assertTrue(AutoAssociation.propose(listOf(purchase,purchase.copy(id=11),row(2,Kind.CREDIT_REVERSAL)),emptyList()).isEmpty())
+        assertEquals(listOf(Link(2,10)),AutoAssociation.propose(listOf(purchase.copy(id=11),purchase,row(2,Kind.CREDIT_REVERSAL)),emptyList()))
     }
     @Test fun currencyAccountDateAndBlockedEvidencePreventMatching() {
         val p=row(10,Kind.CREDIT_PURCHASE)
-        for(a in listOf(row(2,Kind.CREDIT_REVERSAL,tail="1111"),row(2,Kind.CREDIT_REVERSAL,currency="CNY"),row(2,Kind.CREDIT_REVERSAL,date="2026-05-31"),row(2,Kind.CREDIT_REVERSAL,date="2026-08-01"))) assertTrue(AutoAssociation.propose(listOf(p,a),emptyList()).isEmpty())
+        for(a in listOf(row(2,Kind.CREDIT_REVERSAL,tail="1111"),row(2,Kind.CREDIT_REVERSAL,currency="CNY"),row(2,Kind.CREDIT_REVERSAL,date="2026-05-31"))) assertTrue(AutoAssociation.propose(listOf(p,a),emptyList()).isEmpty())
         assertTrue(AutoAssociation.propose(listOf(p,row(2,Kind.CREDIT_REVERSAL)),emptyList(),setOf(2)).isEmpty())
     }
     @Test fun cumulativeOffsetsNeverExceedPurchaseAndReplayIsIdempotent() {
-        val rows=listOf(row(10,Kind.CREDIT_PURCHASE),row(1,Kind.CREDIT_REFUND,"12.00"),row(2,Kind.CREDIT_REFUND,"12.00"))
+        val rows=listOf(row(10,Kind.CREDIT_PURCHASE),row(1,Kind.CREDIT_REFUND,"20.00"),row(2,Kind.CREDIT_REFUND,"20.00"))
         val links=AutoAssociation.propose(rows,emptyList());assertEquals(1,links.size)
         assertTrue(AutoAssociation.propose(rows,links).isEmpty())
-        assertEquals(BigDecimal("8.00"),Accounting.totals(rows,links).getValue("USD").net)
+        assertEquals(BigDecimal("0.00"),Accounting.totals(rows,links).getValue("USD").net)
     }
 }

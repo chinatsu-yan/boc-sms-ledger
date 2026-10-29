@@ -6,6 +6,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
 
+data class MerchantRule(val merchant:String,val alias:String,val name:String)
+
 data class StoredSms(
     val id: Long, val source: String, val sender: String, val body: String, val received: Long, val sim: String,
     val parsed: ParseResult, val effective: Event?, val category: Category, val excluded: Boolean,
@@ -16,15 +18,54 @@ data class StoredSms(
     val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || !effective.currenciesRecognized || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
 }
 
-class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,1), java.io.Closeable {
+class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,2), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE sms(id INTEGER PRIMARY KEY, source TEXT NOT NULL UNIQUE, sender TEXT NOT NULL, body TEXT NOT NULL, received INTEGER NOT NULL, sim TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, event TEXT, parser_version INTEGER NOT NULL, manual_event TEXT, category TEXT, excluded INTEGER NOT NULL DEFAULT 0, verified INTEGER NOT NULL, manual INTEGER NOT NULL DEFAULT 0)""")
         db.execSQL("CREATE TABLE links(adjustment INTEGER PRIMARY KEY REFERENCES sms(id), purchase INTEGER NOT NULL REFERENCES sms(id))")
         db.execSQL("CREATE TABLE audit(id INTEGER PRIMARY KEY, sms_id INTEGER NOT NULL REFERENCES sms(id), at INTEGER NOT NULL, action TEXT NOT NULL, before_value TEXT NOT NULL, after_value TEXT NOT NULL)")
         db.execSQL("CREATE INDEX received_index ON sms(received)")
+        createClassification(db)
     }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) { error("Unsupported database migration: $oldVersion -> $newVersion") }
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) { if(oldVersion<2) createClassification(db) }
+    private fun createClassification(db:SQLiteDatabase) {
+        db.execSQL("CREATE TABLE expense_categories(name TEXT PRIMARY KEY)")
+        listOf("餐饮","购物","交通","日用","订阅","其他").forEach {db.execSQL("INSERT INTO expense_categories VALUES(?)",arrayOf(it))}
+        db.execSQL("CREATE TABLE expense_labels(sms_id INTEGER PRIMARY KEY REFERENCES sms(id), name TEXT NOT NULL, manual INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE merchant_rules(merchant TEXT PRIMARY KEY, alias TEXT NOT NULL, name TEXT NOT NULL, start_id INTEGER NOT NULL)")
+    }
+    fun categories():List<String> = readableDatabase.rawQuery("SELECT name FROM expense_categories ORDER BY rowid",null).use {c->buildList {while(c.moveToNext()) add(c.getString(0))}}
+    fun addCategory(name:String) {require(name.trim().length in 1..16 && name !in listOf("待分类","转账","还款","收入"));writableDatabase.execSQL("INSERT OR IGNORE INTO expense_categories VALUES(?)",arrayOf(name.trim()))}
+    fun labels():Map<Long,String> = readableDatabase.rawQuery("SELECT sms_id,name FROM expense_labels",null).use {c->buildMap {while(c.moveToNext()) put(c.getLong(0),c.getString(1))}}
+    fun rules():List<MerchantRule> = readableDatabase.rawQuery("SELECT merchant,alias,name FROM merchant_rules ORDER BY merchant",null).use {c->buildList {while(c.moveToNext()) add(MerchantRule(c.getString(0),c.getString(1),c.getString(2)))}}
+    fun saveRule(rule:MerchantRule,applyExisting:Boolean=false) {require(rule.merchant.isNotBlank() && rule.alias.length<=40 && rule.name in categories());writableDatabase.execSQL("INSERT OR REPLACE INTO merchant_rules VALUES(?,?,?,?)",arrayOf<Any>(rule.merchant.trim(),rule.alias.trim(),rule.name,if(applyExisting) 0L else (all().maxOfOrNull {it.id} ?: 0L)+1))}
+    fun deleteRule(merchant:String) {writableDatabase.delete("merchant_rules","merchant=?",arrayOf(merchant))}
+    fun classify(ids:Set<Long>,name:String) = transaction {
+        require(name in categories()+listOf("待分类","转账","还款"))
+        val selected=all().filter {it.id in ids};require(selected.size==ids.size && selected.all {it.recognizedTransaction})
+        selected.forEach {row->
+            val e=row.effective!!;require(e.kind in listOf(Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)) {"此记录请通过字段修正处理用途"}
+            require(e.accountKind!=AccountKind.CREDIT || name !in listOf("转账","还款")) {"信用卡消费不可标为转账或还款"}
+            val old=labels()[row.id] ?: "待分类"
+            writableDatabase.execSQL("INSERT OR REPLACE INTO expense_labels VALUES(?,?,1)",arrayOf<Any>(row.id,name))
+            val cat=when(name){"转账"->Category.TRANSFER;"还款"->Category.REPAYMENT;"待分类"->e.defaultCategory;else->Category.SPENDING}
+            writableDatabase.update("sms",ContentValues().apply {put("category",cat.name)},"id=?",arrayOf(row.id.toString()))
+            audit(row.id,"人工分类",old+" / "+row.category.name,name+" / "+cat.name)
+        }
+    }
+    fun applyRules() = transaction {
+        val mapping=rules().associateBy {it.merchant}
+        val starts=readableDatabase.rawQuery("SELECT merchant,start_id FROM merchant_rules",null).use {c->buildMap {while(c.moveToNext()) put(c.getString(0),c.getLong(1))}}
+        val assigned=readableDatabase.rawQuery("SELECT sms_id FROM expense_labels",null).use {c->buildSet {while(c.moveToNext()) add(c.getLong(0))}}
+        all().filter {it.recognizedTransaction && !it.manual && it.id !in assigned && it.category !in listOf(Category.TRANSFER,Category.REPAYMENT,Category.OTHER)}.forEach {row->
+            val e=row.effective!!;val r=mapping[e.merchant] ?: return@forEach
+            if(row.id<(starts[r.merchant] ?: Long.MAX_VALUE)) return@forEach
+            if(e.kind !in listOf(Kind.DEBIT_PAYMENT,Kind.CREDIT_PURCHASE)) return@forEach
+            writableDatabase.execSQL("INSERT INTO expense_labels VALUES(?,?,0)",arrayOf<Any>(row.id,r.name))
+            writableDatabase.update("sms",ContentValues().apply {put("category",Category.SPENDING.name)},"id=?",arrayOf(row.id.toString()))
+            audit(row.id,"商户默认分类","待分类",r.name)
+        }
+    }
     fun ingest(providerId: String, sender: String, body: String, received: Long, sim: String, demo: Boolean = false): Boolean {
         val source=(if(demo) "demo:" else "inbox:") + sourceIdentity(providerId,sender,body,received,sim)
         val parsed=BocParser.parse(body)
@@ -81,6 +122,7 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
     fun link(adjustment:Long,purchase:Long) = transaction {
         val rows=all()
         require(rows.first { it.id==adjustment }.source.startsWith("demo:")==rows.first { it.id==purchase }.source.startsWith("demo:")) { "演示数据不能关联手机数据" }
+        require(rows.first {it.id==adjustment}.sim==rows.first {it.id==purchase}.sim) {"SIM来源不一致"}
         val problem=Accounting.validateLink(rows.map(StoredSms::entry),links(),adjustment,purchase)
         require(problem==null) { problem!! }
         writableDatabase.insertOrThrow("links",null,ContentValues().apply {put("adjustment",adjustment);put("purchase",purchase)})
@@ -97,7 +139,7 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
         val blocked=undone+rows.filter {it.manual || !it.recognizedTransaction}.map {it.id}
         for(link in rows.groupBy {it.source.startsWith("demo:") to it.sim}.values.flatMap {group->AutoAssociation.propose(group.map(StoredSms::entry),links(),blocked)}) {
             writableDatabase.insertOrThrow("links",null,ContentValues().apply {put("adjustment",link.adjustmentId);put("purchase",link.purchaseId)})
-            audit(link.adjustmentId,"自动关联：同账户币种、商户、30天内唯一候选","无","消费 #${link.purchaseId}")
+            audit(link.adjustmentId,"自动关联：同账户币种、同商户同金额、最早可冲销消费","无","消费 #${link.purchaseId}")
         }
     }
     fun reparse() = transaction {
