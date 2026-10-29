@@ -1,0 +1,41 @@
+{
+  "rendered_pixels_per_screen": [
+    824,
+    2016
+  ],
+  "metrics": {
+    "overview": {
+      "contentBottom": 896.734375,
+      "navTop": 921,
+      "horizontalOverflow": false,
+      "overlap": false
+    },
+    "credit": {
+      "contentBottom": 896.34375,
+      "navTop": 921,
+      "horizontalOverflow": false,
+      "overlap": false
+    },
+    "transactions": {
+      "contentBottom": 893.59375,
+      "navTop": 921,
+      "horizontalOverflow": false,
+      "overlap": false
+    },
+    "settings": {
+      "contentBottom": 827.59375,
+      "navTop": 921,
+      "horizontalOverflow": false,
+      "overlap": false
+    }
+  },
+  "browser_errors": [],
+  "checks": [
+    "next-month date",
+    "same-month conflict visible, blocks apply, no overlap",
+    "nonleap February clamp",
+    "leap February clamp",
+    "range switch preserves independent snapshot balance",
+    "430px viewport no page overflow"
+  ]
+}
