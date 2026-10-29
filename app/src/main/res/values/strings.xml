@@ -1,0 +1,5 @@
+<resources>
+    <string name="received_range">接收时间：%1$s 至 %2$s</string>
+    <string name="start_date">起始：%1$s</string>
+    <string name="end_date">结束：%1$s</string>
+</resources>
