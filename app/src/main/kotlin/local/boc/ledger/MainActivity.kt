@@ -43,6 +43,12 @@ class MainActivity:Activity() {
     private lateinit var billingBox:LinearLayout
     private lateinit var billingText:TextView
     private lateinit var billingDayButton:Button
+    private var page="home"
+    private var homeAll=false
+    private lateinit var dashboard:LinearLayout
+    private lateinit var ledgerControls:LinearLayout
+    private lateinit var pageTitle:TextView
+    private lateinit var navigation:LinearLayout
     private var accountKind=AccountKind.CREDIT
     private var cycleOffset=0
     @Volatile private var foreground=false
@@ -74,10 +80,12 @@ class MainActivity:Activity() {
         from=savedInstanceState?.getString("from")?.let(LocalDate::parse)
         to=savedInstanceState?.getString("to")?.let(LocalDate::parse)
         db=LedgerDb(this,if(demo) "demo.db" else "ledger.db")
+        page=savedInstanceState?.getString("page") ?: "home"
+        homeAll=savedInstanceState?.getBoolean("home_all") ?: false
         buildUi();reload()
     }
     override fun onSaveInstanceState(outState:Bundle) {
-        super.onSaveInstanceState(outState);outState.putBoolean("demo",demo);outState.putString("from",from?.toString());outState.putString("to",to?.toString())
+        super.onSaveInstanceState(outState);outState.putString("page",page);outState.putBoolean("home_all",homeAll);outState.putBoolean("demo",demo);outState.putString("from",from?.toString());outState.putString("to",to?.toString())
         outState.putString("account_kind",accountKind.name);outState.putInt("cycle_offset",cycleOffset)
     }
     override fun onResume() {
@@ -111,55 +119,136 @@ class MainActivity:Activity() {
         work("自动扫描本机银行短信",{SmsImport.incremental(this,cancelled)}) {"自动扫描完成，新增 $it 条来源记录"}
     }
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
-    private fun text(value:String,size:Float=14f,bold:Boolean=false)=TextView(this).apply { text=value;textSize=size;setTextColor(Color.rgb(42,36,34));if(bold)setTypeface(null,Typeface.BOLD);setPadding(0,dp(4),0,dp(4)) }
-    private fun button(label:String,action:()->Unit)=Button(this).apply { text=label;textSize=12f;isAllCaps=false;setOnClickListener { if(!busy) action() } }
+    private fun text(value:String,size:Float=14f,bold:Boolean=false)=TextView(this).apply { text=value;textSize=size;setTextColor(Color.rgb(32,43,60));if(bold)setTypeface(null,Typeface.BOLD);setPadding(0,dp(4),0,dp(4)) }
+    private fun button(label:String,action:()->Unit)=Button(this).apply { text=label;textSize=12f;isAllCaps=false;setTextColor(Color.rgb(56,80,118));backgroundTintList=android.content.res.ColorStateList.valueOf(Color.rgb(235,239,245));setOnClickListener { if(!busy) action() } }
     private fun column()=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(8),dp(16),dp(8))}
     private fun horizontal(vararg children:View)=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL;children.forEach {addView(it,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))} }
+    private fun panel(color:Int=Color.rgb(241,239,233))=column().apply {
+        background=android.graphics.drawable.GradientDrawable().apply {setColor(color);cornerRadius=dp(18).toFloat()}
+        val margin=LinearLayout.LayoutParams(-1,-2);margin.setMargins(0,dp(10),0,dp(10));layoutParams=margin
+    }
+    private fun navigate(target:String) {
+        page=target;accountKind=if(target=="debit") AccountKind.DEBIT else AccountKind.CREDIT
+        fxEpoch.incrementAndGet();fxTask?.cancel(true);lastFxRequest=null;lastEstimate=null
+        reload();list.post {list.setSelectionFromTop(0,0)}
+    }
     private fun buildUi() {
-        val root=column().apply {setBackgroundColor(Color.rgb(255,249,242))}
-        root.addView(text(if(demo) "中行短信账本 · 演示" else "中行短信账本",24f,true))
-        root.addView(text("账本留在本机 · 仅公开参考率联网查询",12f))
+        val root=column()
+        pageTitle=text("我的账本",24f,true);root.addView(pageTitle)
+        root.addView(text("LOCAL LEDGER · 账本留在本机",11f))
         status=text("",12f);root.addView(status)
-        scanButton=button("授权自动扫描") {
-            if(!SmsImport.hasRead(this)) requestSms() else {SmsImport.enableAutomatic(this);observeSms();requestAutomaticScan()}
-        }
+        scanButton=button("授权自动扫描") {if(!SmsImport.hasRead(this)) requestSms() else {SmsImport.enableAutomatic(this);observeSms();requestAutomaticScan()}}
         root.addView(horizontal(scanButton,button("更多") {menu()}))
-        val types=RadioGroup(this).apply {orientation=RadioGroup.HORIZONTAL}
-        val credit=RadioButton(this).apply {id=View.generateViewId();text="信用卡"}
-        val debit=RadioButton(this).apply {id=View.generateViewId();text="借记卡"}
-        types.addView(credit,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));types.addView(debit,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        types.check(if(accountKind==AccountKind.CREDIT) credit.id else debit.id)
-        types.setOnCheckedChangeListener {_,id->accountKind=if(id==credit.id) AccountKind.CREDIT else AccountKind.DEBIT;fxEpoch.incrementAndGet();fxTask?.cancel(true);lastEstimate=null;lastFxRequest=null;reload()}
-        root.addView(types)
-        accountFilter=Spinner(this);currencyFilter=Spinner(this)
-        root.addView(horizontal(accountFilter,currencyFilter))
+        dashboard=column().apply {setPadding(0,0,0,0)};root.addView(dashboard)
+        ledgerControls=column().apply {setPadding(0,0,0,0)};root.addView(ledgerControls)
+        accountFilter=Spinner(this);currencyFilter=Spinner(this);ledgerControls.addView(horizontal(accountFilter,currencyFilter))
         billingBox=column().apply {setPadding(0,0,0,0)}
         billingDayButton=button("设置账单日") {configureStatementDay()}
-        billingBox.addView(horizontal(button("上一账期") {cycleOffset--;lastFxRequest=null;refreshCreditEstimate()},billingDayButton,button("下一账期") {cycleOffset++;lastFxRequest=null;refreshCreditEstimate()}))
-        billingText=text("",13f).apply {setOnClickListener {estimateDetails()}}
-        billingBox.addView(billingText);root.addView(billingBox)
-        rangeButton=button("接收时间：全部") {filterRangeDialog()};root.addView(rangeButton)
-        summary=text("",12f);root.addView(summary)
-        list=ListView(this).apply {
-            dividerHeight=dp(8);setBackgroundColor(Color.TRANSPARENT)
-            setOnItemClickListener {_,_,position,_->val index=position-headerViewsCount;if(index in shown.indices) detail(shown[index].id)}
-        }
-        root.setPadding(0,0,0,0);list.addHeaderView(root,null,false)
-        val container=FrameLayout(this).apply {setBackgroundColor(Color.rgb(255,249,242));setPadding(dp(16),dp(8),dp(16),dp(8));addView(list)}
+        billingBox.addView(horizontal(button("上一账期") {cycleOffset--;lastFxRequest=null;refreshCreditEstimate();renderDashboard()},billingDayButton,button("下一账期") {cycleOffset++;lastFxRequest=null;refreshCreditEstimate();renderDashboard()}))
+        billingText=text("",15f).apply {setOnClickListener {estimateDetails()}}
+        billingBox.addView(billingText);ledgerControls.addView(billingBox)
+        rangeButton=button("接收时间：全部") {filterRangeDialog()};ledgerControls.addView(rangeButton)
+        summary=text("",12f);ledgerControls.addView(summary)
+        list=ListView(this).apply {setSelector(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));setItemsCanFocus(false);descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS;dividerHeight=dp(5);divider=null;setBackgroundColor(Color.TRANSPARENT)
+            setOnItemClickListener {_,_,position,_->val index=position-headerViewsCount;if(index in shown.indices && page in listOf("debit","credit")) detail(shown[index].id)} }
+        list.addHeaderView(root,null,true)
+        navigation=horizontal(button("概览") {navigate("home")},button("流水") {navigate("debit")},button("信用卡") {navigate("credit")},button("设置") {navigate("settings")})
+        val container=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setBackgroundColor(Color.rgb(251,250,247));addView(list,LinearLayout.LayoutParams(-1,0,1f));addView(navigation)}
         setContentView(container)
-        // API 35 enforces edge-to-edge; consume system bars so controls remain tappable.
-        container.setOnApplyWindowInsetsListener { v,insets ->
-            if(Build.VERSION.SDK_INT >= 30) {
-                val bars=insets.getInsets(WindowInsets.Type.systemBars())
-                v.setPadding(dp(16)+bars.left,dp(8)+bars.top,dp(16)+bars.right,dp(8)+bars.bottom)
-                WindowInsets.CONSUMED
+        container.setOnApplyWindowInsetsListener {v,insets->
+            if(Build.VERSION.SDK_INT>=30) {
+                val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime());v.setPadding(bars.left,bars.top,bars.right,bars.bottom);WindowInsets.CONSUMED
             } else {
                 @Suppress("DEPRECATION")
-                v.setPadding(dp(16)+insets.systemWindowInsetLeft,dp(8)+insets.systemWindowInsetTop,dp(16)+insets.systemWindowInsetRight,dp(8)+insets.systemWindowInsetBottom)
+                v.setPadding(insets.systemWindowInsetLeft,insets.systemWindowInsetTop,insets.systemWindowInsetRight,insets.systemWindowInsetBottom)
                 @Suppress("DEPRECATION")
                 insets.consumeSystemWindowInsets()
             }
         }
+    }
+    private fun repaymentLabel():String {
+        val prefs=statementPrefs();val statement=prefs.getInt("statement_day",0);val day=prefs.getInt("repayment_day",0)
+        if(statement==0) return "账单日未设置，尚不能确定还款周期"
+        if(day==0) return "还款日未设置 · 请按银行账单配置"
+        val month=prefs.getInt("repayment_month",1)
+        if(!RepaymentDate.valid(statement,month,day)) return "还款日早于账单日，请重新设置"
+        val cycle=BillingCycle.containing(LocalDate.now(),statement,cycleOffset)
+        val due=RepaymentDate.forCycle(cycle,month,day);val days=java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(),due)
+        return "账期 ${cycle.start} — ${cycle.end}\n计划还款 $due · "+(if(days>=0) "还有 $days 天" else "该计划日期已过 ${-days} 天")+"\n出账${if(month==0) "当月" else "次月"} $day 日 · 不是银行应还账单"
+    }
+    private fun configureRepayment() {
+        val prefs=statementPrefs();val statement=prefs.getInt("statement_day",0)
+        if(statement==0) {toast("请先设置账单日");configureStatementDay();return}
+        val box=column();box.addView(text("独立还款日期：短月取月底。预览不代表银行真实设置，保存前请核对。"))
+        val month=Spinner(this).apply {adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("出账当月","出账次月"));setSelection(prefs.getInt("repayment_month",1))}
+        val day=NumberPicker(this).apply {minValue=1;maxValue=31;value=prefs.getInt("repayment_day",1).coerceIn(1,31)}
+        box.addView(month);box.addView(day);val preview=text("");box.addView(preview)
+        val dialog=AlertDialog.Builder(this).setTitle("设置还款日").setView(ScrollView(this).apply {addView(box)}).setNegativeButton("取消",null).setPositiveButton("保存",null).create()
+        fun update() {val cycle=BillingCycle.containing(LocalDate.now(),statement,cycleOffset);val valid=RepaymentDate.valid(statement,month.selectedItemPosition,day.value)
+            preview.text=if(valid) "${cycle.start} — ${cycle.end}\n计划还款 ${RepaymentDate.forCycle(cycle,month.selectedItemPosition,day.value)}" else "还款日早于账单日，请选择次月或调整日号"
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled=valid }
+        month.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {override fun onItemSelected(p:AdapterView<*>?,v:View?,i:Int,id:Long)=update();override fun onNothingSelected(p:AdapterView<*>?) {}}
+        day.setOnValueChangedListener {_,_,_->update()}
+        dialog.setOnShowListener {update();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(RepaymentDate.valid(statement,month.selectedItemPosition,day.value)) {prefs.edit().putInt("repayment_month",month.selectedItemPosition).putInt("repayment_day",day.value).apply();dialog.dismiss();renderDashboard()}
+        }};dialog.show()
+    }
+    private fun renderDashboard() {
+        if(!::dashboard.isInitialized) return
+        dashboard.removeAllViews()
+        pageTitle.text=when(page) {"home"->"我的账本";"debit"->"借记流水";"credit"->"信用卡";else->"日期与账本设置"}+(if(demo) " · 演示" else "")
+        ledgerControls.visibility=if(page in listOf("debit","credit")) View.VISIBLE else View.GONE
+        for(i in 0 until navigation.childCount) navigation.getChildAt(i).alpha=if(listOf("home","debit","credit","settings")[i]==page) 1f else 0.65f
+        if(page=="home" || page=="debit") {
+            val debit=rows.filter {it.recognizedTransaction && it.effective?.accountKind==AccountKind.DEBIT}
+            if(page=="home") {
+                dashboard.addView(horizontal(button(if(homeAll) "本月" else "本月 ✓") {homeAll=false;renderDashboard()},button(if(homeAll) "全部 ✓" else "全部") {homeAll=true;renderDashboard()}))
+                val today=LocalDate.now();val first=today.withDayOfMonth(1)
+                val visible=debit.filter {homeAll || Instant.ofEpochMilli(it.received).atZone(zone).toLocalDate() in first..today}
+                dashboard.addView(text(if(homeAll) "全部已导入 · 按短信接收时间" else "$first — $today · 按短信接收时间",12f))
+                val totals=DebitDashboard.totals(debit.map(StoredSms::entry),visible.map {it.id}.toSet())
+                if(totals.isEmpty()) dashboard.addView(text("暂无已识别借记卡收支",20f))
+                for((currency,total) in totals) {
+                    val income=column().apply {addView(text("总收入 · $currency",12f));addView(text(total.income.toPlainString(),26f,true));setOnClickListener {showDebitCategory(visible,Category.INCOME)}}
+                    val expense=column().apply {addView(text("总支出 · $currency",12f));addView(text(total.net.toPlainString(),26f,true));setOnClickListener {showDebitCategory(visible,Category.SPENDING)}}
+                    dashboard.addView(horizontal(income,expense))
+                }
+                dashboard.addView(text("仅已确认用途；本人转账、还款本金及待确认用途另列。点击收入/支出看明细。",12f))
+            }
+            val balances=DebitDashboard.balances(debit.map {ObservedEntry(it.entry(),it.received)})
+            dashboard.addView(text("借记卡余额 · 短信快照",16f,true))
+            if(balances.isEmpty()) dashboard.addView(text("未知 · 尚无可用余额快照",20f))
+            for((currency,group) in balances.groupBy {it.currency}) {
+                val known=group.mapNotNull {it.money};val total=known.fold(BigDecimal.ZERO) {a,b->a+b.amount}
+                dashboard.addView(text(if(known.size==group.size) "$currency ${total.toPlainString()}" else "$currency 余额未知（仅 ${known.size}/${group.size} 个账户有快照）",28f,true))
+                group.forEach {b->dashboard.addView(text("${b.account} · ${b.money ?: "未知"}\n"+(b.received?.let {"最近可用快照接收于 "+Instant.ofEpochMilli(it).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))} ?: "没有余额快照"),12f))}
+            }
+            dashboard.addView(text("按账户/币种取最近接收的可用快照，非实时余额；不以收支差推算。",11f))
+            if(page=="home") {
+                dashboard.addView(panel().apply {addView(text("借记卡",18f,true));addView(text("${debit.size} 条已识别流水 · ${debit.count {it.category==Category.PENDING}} 条用途待确认",12f));addView(button("查看借记流水") {navigate("debit")})})
+                dashboard.addView(panel(Color.rgb(231,237,246)).apply {addView(text("信用卡 · 独立账期",18f,true));addView(text(lastEstimate?.let(::formatEstimate) ?: billingText.text.toString().ifEmpty {"请设置账单日查看估算"},13f));addView(text(repaymentLabel(),12f));addView(button("查看信用卡") {navigate("credit")})})
+            }
+        }
+        if(page=="credit") {
+            lastEstimate?.let {estimate->
+                dashboard.addView(text(if(estimate.complete) "本期净消费 · 参考估算" else "本期净消费 · 已覆盖部分",13f))
+                dashboard.addView(text("USD "+(estimate.usdSubtotal?.setScale(2,java.math.RoundingMode.HALF_UP)?.toPlainString() ?: "暂缺"),36f,true))
+                dashboard.addView(text("≈ CNY "+(estimate.cnySubtotal?.setScale(2,java.math.RoundingMode.HALF_UP)?.toPlainString() ?: "暂缺"),22f))
+            }
+            dashboard.addView(text("计划还款",18f,true));dashboard.addView(text(repaymentLabel(),13f));dashboard.addView(button("账单与还款设置") {navigate("settings")})}
+        if(page=="settings") {
+            dashboard.addView(text("账单日与还款日独立设置",20f,true));dashboard.addView(text("账单日当天归本期；短月取月底。设置只用于短信估算视图，请核对银行实际日期。",13f))
+            dashboard.addView(button("账单日："+statementPrefs().getInt("statement_day",0).let {if(it==0) "未设置" else "每月 $it 日"}) {configureStatementDay()})
+            dashboard.addView(button("还款日："+statementPrefs().getInt("repayment_day",0).let {if(it==0) "未设置" else "每月 $it 日"}) {configureRepayment()})
+            dashboard.addView(panel().apply {addView(text("本期日期预览",16f,true));addView(text(repaymentLabel(),14f))})
+            dashboard.addView(text("还款提醒 · 未启用\n此版本不发送还款通知。",13f))
+            dashboard.addView(button("导入、原文、人工修正与工具") {menu()})
+        }
+        list.post {list.setSelectionFromTop(0,0)}
+    }
+    private fun showDebitCategory(source:List<StoredSms>,category:Category) {
+        val selected=source.filter {it.category==category}
+        AlertDialog.Builder(this).setTitle("借记卡${category.label}明细（${selected.size}）").setItems(selected.map {"${it.effective!!.money} · ${it.effective.merchant ?: it.effective.kind.label}\n${received(it)}"}.toTypedArray()) {_,i->detail(selected[i].id)}.setNegativeButton("关闭",null).show()
     }
     private fun setChoices(spinner:Spinner,values:List<String>,selection:String?=spinner.selectedItem?.toString()) {
         spinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,values)
@@ -205,7 +294,7 @@ class MainActivity:Activity() {
             append("按消费归属统计；已确认冲减随原消费。待定用途不计收支，退货单列不计收入。")
         }
         list.adapter=object:BaseAdapter() {
-            override fun getCount()=shown.size
+            override fun getCount()=if(page in listOf("debit","credit")) shown.size else 0
             override fun getItem(position:Int)=shown[position]
             override fun getItemId(position:Int)=shown[position].id
             override fun getView(position:Int,convertView:View?,parent:ViewGroup?):View {
@@ -220,7 +309,7 @@ class MainActivity:Activity() {
         }
         list.setSelectionFromTop(savedPosition.coerceAtMost(shown.size),savedTop)
         billingBox.visibility=if(accountKind==AccountKind.CREDIT) View.VISIBLE else View.GONE
-        refreshCreditEstimate()
+        refreshCreditEstimate();renderDashboard()
     }
     private fun received(r:StoredSms)=Instant.ofEpochMilli(r.received).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
     private fun updateStatus(message:String?=null) {
@@ -325,7 +414,7 @@ class MainActivity:Activity() {
         val box=column();box.addView(text("按短信交易日期估算：账单日当天归本期，下一天起归下期；短月取月底。与银行实际入账账单可能不同。此设置用于当前信用卡视图。"))
         val day=NumberPicker(this).apply {minValue=1;maxValue=31;value=statementPrefs().getInt("statement_day",1)}
         box.addView(day)
-        AlertDialog.Builder(this).setTitle("配置信用卡账单日").setView(box).setPositiveButton("保存") {_,_->statementPrefs().edit().putInt("statement_day",day.value).apply();cycleOffset=0;lastFxRequest=null;refreshCreditEstimate()}.setNegativeButton("取消",null).show()
+        AlertDialog.Builder(this).setTitle("配置信用卡账单日").setView(box).setPositiveButton("保存") {_,_->statementPrefs().edit().putInt("statement_day",day.value).apply();cycleOffset=0;lastFxRequest=null;refreshCreditEstimate();renderDashboard()}.setNegativeButton("取消",null).show()
     }
     private fun refreshCreditEstimate(force:Boolean=false) {
         if(!::billingText.isInitialized || accountKind!=AccountKind.CREDIT || !foreground) return
@@ -346,7 +435,7 @@ class MainActivity:Activity() {
             }
             runOnUiThread {
                 if(epoch!=fxEpoch.get() || !foreground || isDestroyed) return@runOnUiThread
-                result.fold({value->lastEstimate=value;billingText.text=formatEstimate(value)},{billingText.text=getString(R.string.bill_failed,cycle.start.toString(),cycle.end.toString())})
+                result.fold({value->lastEstimate=value;billingText.text=formatEstimate(value);renderDashboard()},{billingText.text=getString(R.string.bill_failed,cycle.start.toString(),cycle.end.toString());renderDashboard()})
             }
         }
     }

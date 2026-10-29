@@ -9,8 +9,8 @@ android {
         applicationId = "local.boc.ledger"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }
     signingConfigs { getByName("debug") { storeFile = rootProject.file("private/debug.keystore") } }

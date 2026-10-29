@@ -33,19 +33,18 @@ class ActivitySmokeTest:ActivityInstrumentationTestCase2<MainActivity>(MainActiv
     }
     fun testPermissionFreeDemoAndPersistentLedger() {
         activity
-        waitFor("中行短信账本")
-        tap("更多");tap("打开合成演示")
-        waitFor("中行短信账本 · 演示")
-        waitFor("6 条已识别信用卡交易",false)
-        tap("设置账单日");waitFor("配置信用卡账单日");tap("保存");waitFor("账单日 1 日")
-        tap("更多");tap("切回手机账本")
-        waitFor("中行短信账本");waitFor("设置账单日")
-        tap("更多");tap("打开合成演示")
-        waitFor("6 条已识别信用卡交易",false)
-        tap("借记卡");waitFor("3 条已识别借记卡交易",false)
-        tap("信用卡");waitFor("6 条已识别信用卡交易",false)
-        tap("更多");tap("保留的原始记录");waitFor("保留的原始记录（16）");tap("关闭")
-        // Only recognized rows are shown; all original fixtures remain replayable.
+        waitFor("我的账本")
+        tap("更多");tap("打开合成演示");waitFor("我的账本 · 演示")
+        tap("流水");waitFor("借记流水 · 演示")
+        tap("信用卡");waitFor("信用卡 · 演示")
+        tap("设置");waitFor("日期与账本设置 · 演示")
+        waitFor("还款日：未设置")
+        tap("账单日：未设置");tap("保存")
+        tap("还款日：未设置");waitFor("设置还款日");tap("保存")
+        waitFor("还款日：每月 1 日")
+        tap("概览");waitFor("我的账本 · 演示")
+        tap("更多");tap("切回手机账本");waitFor("我的账本")
+        tap("设置");waitFor("还款日：未设置")
         LedgerDb(activity,"demo.db").use {assertEquals(16,it.all().size)}
     }
 }
