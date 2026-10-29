@@ -1,0 +1,45 @@
+# Android / Gradle
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.externalNativeBuild/
+.cxx/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Signing credentials
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Personal SMS, exports and databases
+/private/
+/raw-sms/
+/exports/
+/local-data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Machine-local IDE and OS files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+*.log

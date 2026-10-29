@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "fixture_kind": "illustrative_fragment",
+  "description": "商户使用 xxx 占位符。仅描述金额、币种和事件类型的预期，不是已验证的完整银行短信，也不足以确认账户或交易关联。",
+  "cases": [
+    {
+      "id": "visa_purchase_usd",
+      "text": "在xxx消费USD0.53元",
+      "expected": {
+        "operation": "purchase",
+        "currency": "USD",
+        "amount": "0.53"
+      }
+    },
+    {
+      "id": "visa_purchase_sgd",
+      "text": "在xxx消费SGD1.38元",
+      "expected": {
+        "operation": "purchase",
+        "currency": "SGD",
+        "amount": "1.38"
+      }
+    },
+    {
+      "id": "visa_reversal_sgd",
+      "text": "在xxx撤销SGD1.38元",
+      "expected": {
+        "operation": "reversal",
+        "currency": "SGD",
+        "amount": "1.38"
+      }
+    }
+  ],
+  "reconciliation_note": "SGD 消费与撤销只有在额外证据或人工确认属于同笔交易后，才计算为 SGD 0.00 的有效消费净额。"
+}
