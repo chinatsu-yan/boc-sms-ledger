@@ -15,7 +15,7 @@ data class StoredSms(
     val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
 }
 
-class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,1) {
+class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,1), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE sms(id INTEGER PRIMARY KEY, source TEXT NOT NULL UNIQUE, sender TEXT NOT NULL, body TEXT NOT NULL, received INTEGER NOT NULL, sim TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, event TEXT, parser_version INTEGER NOT NULL, manual_event TEXT, category TEXT, excluded INTEGER NOT NULL DEFAULT 0, verified INTEGER NOT NULL, manual INTEGER NOT NULL DEFAULT 0)""")
         db.execSQL("CREATE TABLE links(adjustment INTEGER PRIMARY KEY REFERENCES sms(id), purchase INTEGER NOT NULL REFERENCES sms(id))")

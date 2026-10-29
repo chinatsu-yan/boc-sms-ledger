@@ -21,15 +21,33 @@
 
 ## 设备测试
 
-设备执行结果完成后在此记录。设备测试未标记通过前，不应把仅构建成功描述为完整运行验收。
+Android 8.0 / API 26 AOSP x86_64 模拟器（云环境无 KVM，以软件模式启动）：
+
+```sh
+adb -s emulator-5556 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5556 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5556 shell am instrument -w -r local.boc.ledger.test/android.test.InstrumentationTestRunner
+```
+
+结果：`OK (5 tests)`，0 失败/错误，18.113 秒。具体包括：
+
+1. 无短信权限打开演示，切回手机账本再打开，仍为 16 条，演示与手机账本隔离。
+2. 同一来源幂等，不同来源的同正文各保存；关闭重开数据库仍存在。
+3. 候选发送方边界和提供方来源身份稳定。
+4. 关联/解除后金额变化、关联记录修正保护、人工覆盖在重解析后保留、恢复原解析和操作历史。
+5. 未识别原文保留，陌生来源不统计；确认来源、排除/恢复统计及手动补全可追溯。
+
+初次最低版本测试实际发现 SQLiteOpenHelper 在 API 26 不实现 compileSdk 35 暗示的 AutoCloseable 接口，现由 LedgerDb 显式实现 java.io.Closeable 修复；上述 5 项为修复后的完整重跑。也已人工查看 API 26 首屏，权限未授予时按钮、筛选和提示可见，无启动崩溃。
+
+Android 15 / API 35 模拟器结果待最终执行完成后记录。
 
 ## 安装包
 
 `app/build/outputs/apk/debug/app-debug.apk` 为构建输出，忽略于 Git。交付副本为 `boc-sms-ledger-0.1.0-debug.apk`。
 
-SHA-256：`d47e57a97626e97b2f5589c652d69b3ba6046a8c4e79faa93d1a77c7477bf6c8`。
+SHA-256：`dc9611dacfc393f977d7d29c9d01bd5d11ed22479680010a64170ae79755f9da`。
 
-使用忽略的 `private/debug.keystore` 调试签名。未发布 release、未合并 main、未推送远端，未读取真实手机短信或向手机安装。
+文件大小：969,990 字节。使用忽略的 `private/debug.keystore` 调试签名。未发布 release、未合并 main、未推送远端，未读取真实手机短信或向手机安装。
 
 ## 尚未验证或实现
 
