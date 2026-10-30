@@ -398,15 +398,20 @@ class MainActivity:Activity() {
         }
     }
     private fun showBalances(debit:List<StoredSms>) {info("余额快照",DebitDashboard.balances(debit.map {ObservedEntry(it.entry(),it.received)}).joinToString("\n\n"){b->"${b.account} · ${b.money ?: "未知"}\n"+(b.received?.let {Instant.ofEpochMilli(it).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))} ?: "无快照")}.ifEmpty {"尚无可用余额快照"})}
+    private fun referenceText(e:Event,value:UsdReference):String {
+        val amount=value.amount ?: return value.reason.orEmpty()
+        val date=value.quote?.date
+        return "≈ US$ "+estimateMoney(amount)+(if(date!=null && date!=SmsDate.fullDate(e)) " · 参考 "+date.format(DateTimeFormatter.ofPattern("MM.dd")) else "")
+    }
     private fun bindReference(e:Event,label:TextView) {
-        fun display(value:UsdReference) {label.text=value.amount?.let {"≈ US$ "+estimateMoney(it)} ?: value.reason;label.setOnClickListener {info("美元参考",value.quote?.let {"${e.money.currency}/USD ${it.rate}\n有效日 ${it.date}\n${it.source}"} ?: value.reason.orEmpty())}}
+        fun display(value:UsdReference) {label.text=referenceText(e,value);label.setOnClickListener {info("美元参考",value.quote?.let {"${e.money.currency}/USD ${it.rate}\n有效日 ${it.date}\n${it.source}"} ?: value.reason.orEmpty())}}
         rowReferences[e]?.let {display(it);return}
         label.text="美元参考…"
         referenceWaiters[e]?.let {it.add(label);return}
         referenceWaiters[e]=mutableListOf(label);val isDemo=demo
         fxWorker.execute {
             val result=FxCache(this).use {cache->CreditReference.convert(e,LocalDate.now(),FxRepository(cache,network=!isDemo))}
-            runOnUiThread {rowReferences[e]=result;referenceWaiters.remove(e)?.forEach {view->view.text=result.amount?.let {"≈ US$ "+estimateMoney(it)} ?: result.reason;view.setOnClickListener {info("美元参考",result.quote?.let {"${e.money.currency}/USD ${it.rate}\n有效日 ${it.date}\n${it.source}"} ?: result.reason.orEmpty())}}}
+            runOnUiThread {rowReferences[e]=result;referenceWaiters.remove(e)?.forEach {view->view.text=referenceText(e,result);view.setOnClickListener {info("美元参考",result.quote?.let {"${e.money.currency}/USD ${it.rate}\n有效日 ${it.date}\n${it.source}"} ?: result.reason.orEmpty())}}}
         }
     }
     private fun transactionRow(r:StoredSms,selectable:Boolean=true):View {
@@ -608,7 +613,7 @@ class MainActivity:Activity() {
             4->importDialog()
             5->rawRecords()
             6->{rowReferences.clear();lastFxRequest=null;refreshCreditEstimate(true);render()}
-            7->LedgerSheet.Builder(this).setTitle("本地短信账本").setMessage("默认只展示成功识别或人工确认、来源/币种已确认且未排除的交易；借记卡与信用卡分开。其它原文保留在工具菜单，可重新解析。\n\n自动扫描：授权后首次读取现存候选短信；收到短信、短信库变化或回到应用时补扫。系统后台限制、强行停止或权限撤销仍可能延迟，下次打开恢复。可以主动暂停。\n\n账期按短信交易日估算，账单日当天归本期，短月使用月底。人民币消费单列；外币每笔净消费按原消费日参考率折 USD，再用最新可用 USD/CNY 折人民币，显示两位而中间不先舍入；已关联撤销/退货随原消费冲减，未关联调整单列，信用卡本金还款不计消费。\n\nFrankfurter v2 公开参考率不是银行牌价或官方应还额。仅查询币种/日期，不上传短信、账户、商户或金额。可核验有效日取不晚于目标日且近14天内最近的来源记录；缺失显示覆盖范围，离线可用缓存，历史及缓存时间可查看。\n\n数据只在本地，关闭系统备份；卸载会删除账本，尚无导出功能。还款双通知关联未实现，疑似借记卡本金扣款默认用途待确认。") .setPositiveButton("知道了",null).show()
+            7->LedgerSheet.Builder(this).setTitle("本地短信账本").setMessage("默认只展示成功识别或人工确认、来源/币种已确认且未排除的交易；借记卡与信用卡分开。其它原文保留在工具菜单，可重新解析。\n\n自动扫描：授权后首次读取现存候选短信；收到短信、短信库变化或回到应用时补扫。系统后台限制、强行停止或权限撤销仍可能延迟，下次打开恢复。可以主动暂停。\n\n账期按短信交易日估算，账单日当天归本期，短月使用月底。人民币消费单列；外币每笔净消费按原消费日参考率折 USD，再用最新可用 USD/CNY 折人民币，显示两位而中间不先舍入；已关联撤销/退货随原消费冲减，未关联调整单列，信用卡本金还款不计消费。\n\nFrankfurter v2 公开参考率不是银行牌价或官方应还额。仅查询币种/日期，不上传短信、账户、商户或金额。优先ECB近14天内不晚于目标日的参考报价；未覆盖币种使用综合参考价，节假日标注实际参考日；缺失显示覆盖范围，离线可用缓存，历史及缓存时间可查看。\n\n数据只在本地，关闭系统备份；卸载会删除账本，尚无导出功能。还款双通知关联未实现，疑似借记卡本金扣款默认用途待确认。") .setPositiveButton("知道了",null).show()
         }}.show()
     }
     private fun rawRecords() {

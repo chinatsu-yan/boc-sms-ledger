@@ -6,6 +6,15 @@ import java.math.BigDecimal
 import java.time.LocalDate
 
 class BillingTest {
+    @Test fun yenReferenceRefundThenUsdSumAndNativeYuanRemainSeparate() {
+        val today=LocalDate.of(2024,2,20)
+        val rows=listOf(entry(1,Kind.CREDIT_PURCHASE,"2024-02-18","JPY","10000"),entry(2,Kind.CREDIT_REFUND,"2024-02-19","JPY","2000",Category.PENDING),entry(3,Kind.CREDIT_PURCHASE,"2024-02-18","USD","20"),entry(4,Kind.CREDIT_PURCHASE,"2024-02-18","CNY","300"))
+        val result=BillingEstimator.estimate(rows,listOf(Link(2,1)),BillingCycle.containing(today,25),today,RateLookup {key->
+            assertTrue(key==QuoteKey("JPY","USD",LocalDate.of(2024,2,18)) || key==QuoteKey("USD","CNY",null))
+            RateResult.Available(FxQuote(key.base,key.quote,if(key.date==null)today else LocalDate.of(2024,2,16),BigDecimal(if(key.base=="JPY")"0.00625" else "7.2"),"synthetic",1))
+        })
+        assertEquals(0,BigDecimal("70").compareTo(result.usdSubtotal));assertEquals(0,BigDecimal("504").compareTo(result.cnySubtotal));assertEquals(BigDecimal("300"),result.nativeCnySubtotal);assertTrue(result.complete)
+    }
     private fun date(s:String)=LocalDate.parse(s)
     private fun entry(id:Long,kind:Kind,day:String?,currency:String="EUR",amount:String="10.00",category:Category=Category.SPENDING):Entry {
         val d=day?.let(::date)

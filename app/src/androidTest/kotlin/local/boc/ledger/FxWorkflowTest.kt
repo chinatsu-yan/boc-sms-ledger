@@ -11,15 +11,49 @@ class FxWorkflowTest:AndroidTestCase() {
     override fun tearDown(){context.deleteDatabase("fx-test.db");context.deleteDatabase("view-test.db");super.tearDown()}
     private val time=Instant.parse("2024-02-20T12:00:00Z").toEpochMilli()
     fun testProviderEffectiveDateAndExactRateToken() {
-        val key=QuoteKey("TWD","USD",LocalDate.parse("2024-02-18"))
-        val raw="""{"date":"2024-02-18","base":"TWD","quote":"USD","rate":0.03,"providers":[{"key":"ECB","date":"2024-02-16","rate":0.03},{"key":"TEST","date":"2024-02-17","rate":0.03}]}"""
+        val key=QuoteKey("JPY","USD",LocalDate.parse("2024-02-18"))
+        val raw="""{"date":"2024-02-18","base":"JPY","quote":"USD","rate":0.00625,"providers":[{"key":"ECB","date":"2024-02-16","rate":0.00625},{"key":"BCC","date":"2024-02-18","rate":0.00032652}]}"""
         val selection=PublicRateParser.select(raw,key,LocalDate.parse("2024-02-20"))
-        assertEquals("TEST",selection.provider);assertEquals(LocalDate.parse("2024-02-17"),selection.date)
-        val direct="""{"date":"2024-02-17","base":"TWD","quote":"USD","rate":0.03123456789123456789}"""
+        assertEquals("ECB",selection.provider);assertEquals(LocalDate.parse("2024-02-16"),selection.date)
+        val direct="""{"date":"2024-02-16","base":"JPY","quote":"USD","rate":0.03123456789123456789}"""
         val quote=PublicRateParser.direct(direct,key,selection,time)
         assertEquals("0.03123456789123456789",quote.rate.toPlainString())
         try {PublicRateParser.direct(direct.replace("0.03123456789123456789","0.03.1"),key,selection,time);fail("invalid numeric token")} catch(_:Exception){}
-        try {PublicRateParser.direct(direct.replace("2024-02-17","2024-02-18"),key,selection,time);fail("wrong effective day")} catch(_:IllegalArgumentException){}
+        try {PublicRateParser.direct(direct.replace("2024-02-16","2024-02-18"),key,selection,time);fail("wrong effective day")} catch(_:IllegalArgumentException){}
+    }
+    fun testWeekendReferenceAndUnsupportedEcbCurrencyUseIntendedRoutes() {
+        val paths=mutableListOf<String>()
+        val transport=PublicRateTransport {path->
+            paths+=path
+            when(path) {
+                "/v2/rate/jpy/usd?expand=providers&date=2024-02-18" -> """{"date":"2024-02-18","base":"JPY","quote":"USD","rate":0.00625,"providers":[{"key":"ECB","date":"2024-02-16","rate":0.00625},{"key":"BCC","date":"2024-02-18","rate":0.00032652}]}"""
+                "/v2/providers/ecb/rate/jpy/usd?date=2024-02-16" -> """{"date":"2024-02-16","base":"JPY","quote":"USD","rate":0.00625}"""
+                "/v2/rate/twd/usd?expand=providers&date=2024-02-18" -> """{"date":"2024-02-18","base":"TWD","quote":"USD","rate":0.03125,"providers":[{"key":"TEST","date":"2024-02-16","rate":0.001}]}"""
+                "/v2/rate/twd/usd?date=2024-02-16" -> """{"date":"2024-02-16","base":"TWD","quote":"USD","rate":0.03125}"""
+                else -> error("Unexpected public request: $path")
+            }
+        }
+        FxCache(context,"fx-test.db").use {cache->
+            val repository=FxRepository(cache,transport,{time})
+            val event=Event(Kind.CREDIT_PURCHASE,"5555",BodyDate(2024,2,18),BocParser.money("JPY","10,000"),"SYNTHETIC")
+            val yen=CreditReference.convert(event,LocalDate.parse("2024-02-20"),repository)
+            assertEquals(0,BigDecimal("62.50").compareTo(yen.amount));assertEquals(LocalDate.parse("2024-02-16"),yen.quote!!.date)
+            val twd=repository.get(QuoteKey("TWD","USD",LocalDate.parse("2024-02-18"))) as RateResult.Available
+            assertEquals(BigDecimal("0.03125"),twd.quote.rate);assertTrue(twd.quote.source.contains("综合参考"))
+            assertEquals(4,paths.size)
+        }
+    }
+    fun testOldSingleSourceCacheMigratesWithoutDeletingEcbQuote() {
+        val date=LocalDate.parse("2024-02-18");val bad=QuoteKey("JPY","USD",date);val good=QuoteKey("EUR","USD",date);val missing=QuoteKey("TWD","USD",date)
+        FxCache(context,"fx-test.db").use {cache->
+            for((key,source) in listOf(bad to "Frankfurter v2（来源键 BCC，参考率）",good to "Frankfurter v2（来源键 ECB，参考率）"))
+                cache.save(key,CachedRate(FxQuote(key.base,key.quote,date,BigDecimal.ONE,source,time),time+999999,0,null))
+            cache.save(missing,CachedRate(null,0,time+999999,"old failure"))
+            cache.writableDatabase.version=1
+        }
+        FxCache(context,"fx-test.db").use {cache->
+            assertNull(cache.load(bad));assertNull(cache.load(missing));assertNotNull(cache.load(good));assertEquals(2,cache.readableDatabase.version)
+        }
     }
     fun testCachingOfflineStalenessNegativeCacheAndFutureRequests() {
         var now=time;var requests=0;var offline=false
