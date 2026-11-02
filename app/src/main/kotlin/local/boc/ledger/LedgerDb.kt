@@ -18,7 +18,7 @@ data class StoredSms(
     val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || !effective.currenciesRecognized || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
 }
 
-class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,2), java.io.Closeable {
+class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,3), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE sms(id INTEGER PRIMARY KEY, source TEXT NOT NULL UNIQUE, sender TEXT NOT NULL, body TEXT NOT NULL, received INTEGER NOT NULL, sim TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, event TEXT, parser_version INTEGER NOT NULL, manual_event TEXT, category TEXT, excluded INTEGER NOT NULL DEFAULT 0, verified INTEGER NOT NULL, manual INTEGER NOT NULL DEFAULT 0)""")
         db.execSQL("CREATE TABLE links(adjustment INTEGER PRIMARY KEY REFERENCES sms(id), purchase INTEGER NOT NULL REFERENCES sms(id))")
@@ -27,7 +27,22 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
         createClassification(db)
     }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) { if(oldVersion<2) createClassification(db) }
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if(oldVersion<2) createClassification(db)
+        if(oldVersion<3) refreshUnrecognizedDebitIncome(db)
+    }
+    private fun refreshUnrecognizedDebitIncome(db:SQLiteDatabase) {
+        db.rawQuery("SELECT id,body,status FROM sms WHERE status=? AND manual=0 AND excluded=0 AND parser_version<4 AND body LIKE ? AND id NOT IN (SELECT adjustment FROM links UNION SELECT purchase FROM links)",arrayOf(ParseStatus.NEEDS_REVIEW.name,"您的借记卡账户%收入%" )).use {c->
+            while(c.moveToNext()) {
+                val p=BocParser.parse(c.getString(1))
+                val parsedEvent=p.event
+                if(p.status!=ParseStatus.PARSED || parsedEvent?.kind!=Kind.DEBIT_TRANSFER_IN) continue
+                val event=EventJson.encode(parsedEvent)
+                db.update("sms",ContentValues().apply {put("status",p.status.name);put("reason",p.reason);put("event",event);put("parser_version",BocParser.VERSION)},"id=?",arrayOf(c.getLong(0).toString()))
+                db.insertOrThrow("audit",null,ContentValues().apply {put("sms_id",c.getLong(0));put("at",System.currentTimeMillis());put("action","升级识别借记卡收入 v4");put("before_value",c.getString(2));put("after_value",event)})
+            }
+        }
+    }
     private fun createClassification(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE expense_categories(name TEXT PRIMARY KEY)")
         listOf("餐饮","购物","交通","日用","订阅","其他").forEach {db.execSQL("INSERT INTO expense_categories VALUES(?)",arrayOf(it))}

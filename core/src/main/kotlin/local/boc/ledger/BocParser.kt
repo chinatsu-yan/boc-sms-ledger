@@ -4,10 +4,10 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 object BocParser {
-    const val VERSION = 3
+    const val VERSION = 4
     // The operation word anchors the currency token; do not search merchant suffixes for codes.
     private const val MONEY = "(人民币|RMB|[A-Z]{3})([0-9.,]+)"
-    private val debit = Regex("您的借记卡账户([0-9]{4})，于([0-9]{2})月([0-9]{2})日(网上支付支取|收入\\(网银跨行\\)|手机银行支取\\(跨行支付\\))人民币([0-9.,]+)元,交易后余额([0-9.,]+)【中国银行】")
+    private val debit = Regex("您的借记卡账户([0-9]{4})[,，]于([0-9]{2})月([0-9]{2})日(网上支付支取|收入(?:\\([^()]+\\))+|手机银行支取\\(跨行支付\\))人民币([0-9.,]+)元[,，]交易后余额([0-9.,]+)【中国银行】")
     private const val PREFIX = "您的信用卡([0-9]{4})于([0-9]{4})年([0-9]{2})月([0-9]{2})日"
     private val credit = Regex(PREFIX + "，在(.+?)(消费|撤销)" + MONEY + "元。?【中国银行】")
     private val refund = Regex(PREFIX + "成功退货" + MONEY + "元。?【中国银行】")
@@ -35,8 +35,8 @@ object BocParser {
         return try {
             val event = debit.matchEntire(text)?.let { m ->
                 val g = m.groupValues
-                val kind = when(g[4]) { "网上支付支取" -> Kind.DEBIT_PAYMENT; "收入(网银跨行)" -> Kind.DEBIT_TRANSFER_IN; else -> Kind.DEBIT_TRANSFER_OUT }
-                Event(kind, g[1], BodyDate(null,g[2].toInt(),g[3].toInt()), value("人民币",g[5]), balance = value("人民币",g[6]), channel = when(kind) { Kind.DEBIT_PAYMENT -> "网上支付"; Kind.DEBIT_TRANSFER_IN -> "网银跨行"; else -> "手机银行 / 跨行支付" })
+                val kind = when { g[4] == "网上支付支取" -> Kind.DEBIT_PAYMENT; g[4].startsWith("收入") -> Kind.DEBIT_TRANSFER_IN; else -> Kind.DEBIT_TRANSFER_OUT }
+                Event(kind, g[1], BodyDate(null,g[2].toInt(),g[3].toInt()), value("人民币",g[5]), balance = value("人民币",g[6]), channel = when(kind) { Kind.DEBIT_PAYMENT -> "网上支付"; Kind.DEBIT_TRANSFER_IN -> g[4].removePrefix("收入(").removeSuffix(")").replace(")("," / "); else -> "手机银行 / 跨行支付" })
             } ?: credit.matchEntire(text)?.let { m ->
                 val g=m.groupValues
                 Event(if(g[6]=="消费") Kind.CREDIT_PURCHASE else Kind.CREDIT_REVERSAL,g[1],date(g),value(g[7],g[8]),merchant=g[5])
