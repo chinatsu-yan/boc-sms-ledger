@@ -28,7 +28,7 @@ class ClassificationTest:AndroidTestCase() {
    for(i in 1..2) d.execSQL("INSERT INTO sms VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",arrayOf<Any>(i,"demo:$i","95566","synthetic",1000,"s","PARSED","",EventJson.encode(event),BocParser.VERSION,EventJson.encode(event),"SPENDING",0,1,1))
    d.execSQL("INSERT INTO links VALUES(2,1)");d.execSQL("INSERT INTO audit VALUES(1,1,1000,'人工修正','before','after')");d.version=1
   }
-  LedgerDb(context,name).use {db->assertEquals(2,db.all().size);assertTrue(db.all().all {it.manual});assertEquals(listOf(Link(2,1)),db.links());assertTrue(db.history(1).single().contains("after"));assertEquals(6,db.categories().size);assertEquals(2,db.readableDatabase.version)}
+  LedgerDb(context,name).use {db->assertEquals(2,db.all().size);assertTrue(db.all().all {it.manual});assertEquals(listOf(Link(2,1)),db.links());assertTrue(db.history(1).single().contains("after"));assertEquals(6,db.categories().size);assertEquals(5,db.categories(true).size);assertEquals(4,db.readableDatabase.version)}
   context.deleteDatabase(name)
  }
 }

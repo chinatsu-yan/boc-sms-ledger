@@ -18,18 +18,24 @@ data class StoredSms(
     val needsReview get() = !excluded && parsed.status!=ParseStatus.IGNORED && (!verified || effective==null || !effective.currenciesRecognized || category==Category.PENDING || effective.kind in listOf(Kind.CREDIT_REVERSAL,Kind.CREDIT_REFUND))
 }
 
-class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,3), java.io.Closeable {
+class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(context,name,null,4), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""CREATE TABLE sms(id INTEGER PRIMARY KEY, source TEXT NOT NULL UNIQUE, sender TEXT NOT NULL, body TEXT NOT NULL, received INTEGER NOT NULL, sim TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, event TEXT, parser_version INTEGER NOT NULL, manual_event TEXT, category TEXT, excluded INTEGER NOT NULL DEFAULT 0, verified INTEGER NOT NULL, manual INTEGER NOT NULL DEFAULT 0)""")
         db.execSQL("CREATE TABLE links(adjustment INTEGER PRIMARY KEY REFERENCES sms(id), purchase INTEGER NOT NULL REFERENCES sms(id))")
         db.execSQL("CREATE TABLE audit(id INTEGER PRIMARY KEY, sms_id INTEGER NOT NULL REFERENCES sms(id), at INTEGER NOT NULL, action TEXT NOT NULL, before_value TEXT NOT NULL, after_value TEXT NOT NULL)")
         db.execSQL("CREATE INDEX received_index ON sms(received)")
         createClassification(db)
+        createIncomeCategories(db)
     }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if(oldVersion<2) createClassification(db)
         if(oldVersion<3) refreshUnrecognizedDebitIncome(db)
+        if(oldVersion<4) createIncomeCategories(db)
+    }
+    private fun createIncomeCategories(db:SQLiteDatabase) {
+        db.execSQL("CREATE TABLE income_categories(name TEXT PRIMARY KEY)")
+        listOf("工资","奖金","公积金","利息","其他收入").forEach {db.execSQL("INSERT INTO income_categories VALUES(?)",arrayOf(it))}
     }
     private fun refreshUnrecognizedDebitIncome(db:SQLiteDatabase) {
         db.rawQuery("SELECT id,body,status FROM sms WHERE status=? AND manual=0 AND excluded=0 AND parser_version<4 AND body LIKE ? AND id NOT IN (SELECT adjustment FROM links UNION SELECT purchase FROM links)",arrayOf(ParseStatus.NEEDS_REVIEW.name,"您的借记卡账户%收入%" )).use {c->
@@ -49,21 +55,23 @@ class LedgerDb(context: Context, name: String = "ledger.db"): SQLiteOpenHelper(c
         db.execSQL("CREATE TABLE expense_labels(sms_id INTEGER PRIMARY KEY REFERENCES sms(id), name TEXT NOT NULL, manual INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE merchant_rules(merchant TEXT PRIMARY KEY, alias TEXT NOT NULL, name TEXT NOT NULL, start_id INTEGER NOT NULL)")
     }
-    fun categories():List<String> = readableDatabase.rawQuery("SELECT name FROM expense_categories ORDER BY rowid",null).use {c->buildList {while(c.moveToNext()) add(c.getString(0))}}
-    fun addCategory(name:String) {require(name.trim().length in 1..16 && name !in listOf("待分类","转账","还款","收入"));writableDatabase.execSQL("INSERT OR IGNORE INTO expense_categories VALUES(?)",arrayOf(name.trim()))}
+    fun categories(income:Boolean=false):List<String> = readableDatabase.rawQuery("SELECT name FROM ${if(income) "income_categories" else "expense_categories"} ORDER BY rowid",null).use {c->buildList {while(c.moveToNext()) add(c.getString(0))}}
+    fun addCategory(name:String,income:Boolean=false) {require(name.trim().length in 1..16 && name.trim() !in listOf("待分类","转账","还款","收入"));writableDatabase.execSQL("INSERT OR IGNORE INTO ${if(income) "income_categories" else "expense_categories"} VALUES(?)",arrayOf(name.trim()))}
     fun labels():Map<Long,String> = readableDatabase.rawQuery("SELECT sms_id,name FROM expense_labels",null).use {c->buildMap {while(c.moveToNext()) put(c.getLong(0),c.getString(1))}}
     fun rules():List<MerchantRule> = readableDatabase.rawQuery("SELECT merchant,alias,name FROM merchant_rules ORDER BY merchant",null).use {c->buildList {while(c.moveToNext()) add(MerchantRule(c.getString(0),c.getString(1),c.getString(2)))}}
     fun saveRule(rule:MerchantRule,applyExisting:Boolean=false) {require(rule.merchant.isNotBlank() && rule.alias.length<=40 && rule.name in categories());writableDatabase.execSQL("INSERT OR REPLACE INTO merchant_rules VALUES(?,?,?,?)",arrayOf<Any>(rule.merchant.trim(),rule.alias.trim(),rule.name,if(applyExisting) 0L else (all().maxOfOrNull {it.id} ?: 0L)+1))}
     fun deleteRule(merchant:String) {writableDatabase.delete("merchant_rules","merchant=?",arrayOf(merchant))}
     fun classify(ids:Set<Long>,name:String) = transaction {
-        require(name in categories()+listOf("待分类","转账","还款"))
         val selected=all().filter {it.id in ids};require(selected.size==ids.size && selected.all {it.recognizedTransaction})
+        val income=selected.all {it.effective!!.kind==Kind.DEBIT_TRANSFER_IN}
+        require(income || selected.none {it.effective!!.kind==Kind.DEBIT_TRANSFER_IN}) {"收入和支出请分别批量分类"}
+        require(name in categories(income)+if(income) listOf("待分类","转账") else listOf("待分类","转账","还款"))
         selected.forEach {row->
-            val e=row.effective!!;require(e.kind in listOf(Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)) {"此记录请通过字段修正处理用途"}
+            val e=row.effective!!;require(e.kind in listOf(Kind.DEBIT_TRANSFER_IN,Kind.DEBIT_PAYMENT,Kind.DEBIT_TRANSFER_OUT,Kind.CREDIT_PURCHASE)) {"此记录请通过字段修正处理用途"}
             require(e.accountKind!=AccountKind.CREDIT || name !in listOf("转账","还款")) {"信用卡消费不可标为转账或还款"}
             val old=labels()[row.id] ?: "待分类"
             writableDatabase.execSQL("INSERT OR REPLACE INTO expense_labels VALUES(?,?,1)",arrayOf<Any>(row.id,name))
-            val cat=when(name){"转账"->Category.TRANSFER;"还款"->Category.REPAYMENT;"待分类"->e.defaultCategory;else->Category.SPENDING}
+            val cat=when(name){"转账"->Category.TRANSFER;"还款"->Category.REPAYMENT;"待分类"->e.defaultCategory;else->if(income) Category.INCOME else Category.SPENDING}
             writableDatabase.update("sms",ContentValues().apply {put("category",cat.name)},"id=?",arrayOf(row.id.toString()))
             audit(row.id,"人工分类",old+" / "+row.category.name,name+" / "+cat.name)
         }

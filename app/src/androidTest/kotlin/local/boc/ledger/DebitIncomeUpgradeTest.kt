@@ -24,7 +24,7 @@ class DebitIncomeUpgradeTest:AndroidTestCase() {
             db.ingest("refund","95566","您的信用卡9346于2024年08月18日成功退货USD20.00元。【中国银行】",time+5,"synthetic",true)
             db.link(db.all().first{it.received==time+5}.id,db.all().first{it.received==time+4}.id);originalLinks=db.links()
             db.writableDatabase.execSQL("UPDATE sms SET event=NULL,status='NEEDS_REVIEW',reason='old template',parser_version=3 WHERE id IN (?,?,?)",arrayOf(target,manual,excluded))
-            db.writableDatabase.version=2
+            db.writableDatabase.execSQL("DROP TABLE income_categories");db.writableDatabase.version=2
         }
         LedgerDb(context,name).use {db->
             val rows=db.all();val income=rows.first{it.id==target}
