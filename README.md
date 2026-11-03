@@ -6,7 +6,7 @@
 
 ## 安装包
 
-在 [GitHub Releases](https://github.com/chinatsu-yan/boc-sms-ledger/releases/tag/v0.1.11) 下载 `boc-sms-ledger-0.1.11-debug.apk`，支持 Android 8.0 及以上。此包沿用此前提供版本的签名，可直接覆盖安装并保留本地数据。Release 同时提供源码压缩包和 APK 校验值。
+在 [GitHub Releases](https://github.com/chinatsu-yan/boc-sms-ledger/releases/tag/v0.1.11) 下载 `boc-sms-ledger-0.1.11-debug.apk`，支持 Android 8.0 及以上。此包沿用此前提供版本的签名，可直接覆盖安装并保留本地数据。Release 提供源码压缩包；APK 与 SHA256 校验文件保存在 [downloads](downloads) 目录，并在 Release 中提供下载入口。
 
 ## 首版范围
 
